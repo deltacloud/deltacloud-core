@@ -15,12 +15,9 @@
 # under the License.
 #
 
-require 'rubygems'
 require 'rexml/document'
 require 'uri'
-
 require 'deltacloud/drivers/opennebula/cloud_client'
-
 
 module OCCIClient
 

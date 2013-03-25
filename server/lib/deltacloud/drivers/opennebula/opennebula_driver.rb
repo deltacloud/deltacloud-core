@@ -17,7 +17,6 @@
 
 require 'deltacloud/drivers/opennebula/occi_client'
 
-require 'erb'
 # TBD Nokogiri support
 require 'rexml/document'
 
