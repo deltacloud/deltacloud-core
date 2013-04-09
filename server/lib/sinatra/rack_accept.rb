@@ -109,7 +109,7 @@ module Rack
     end
   end
 
-  class MediaType < Sinatra::Base
+  class MediaType < ::Sinatra::Base
 
     include Rack::RespondTo::Helpers
 
