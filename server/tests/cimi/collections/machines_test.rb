@@ -51,7 +51,7 @@ describe CIMI::Collections::Machines do
     status.must_equal 200
     model.must_be_kind_of CIMI::Model::Machine::DiskCollection
     model.entries.size.must_equal 1
-    model.entries.first.name.must_equal "inst0_disk_0"
+    model.entries.first.name.must_equal "inst1_disk_163840"
   end
 
   describe "$expand" do
