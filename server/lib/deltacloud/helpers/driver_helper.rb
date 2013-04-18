@@ -54,7 +54,7 @@ module Deltacloud::Helpers
       begin
         driver_class
       rescue NameError => e
-        require_relative(driver_source_name) ? retry : raise(LoadError.new(e.message))
+        Thread.exclusive { require_relative(driver_source_name) } ? retry : raise(LoadError.new(e.message))
       rescue LoadError => e
         raise "[ERROR] The driver '#{driver_name}' is unknown or not installed (#{driver_source_name})\n" +
           "\n#{e.message}\n"
