@@ -85,7 +85,7 @@ module Deltacloud::Drivers::Fgcp
         client = new_client(credentials)
         name = opts[:name] || "system_#{Time.now.to_s}"
         template = opts[:system_template]
-        template_id = template.id || template.href.to_s.gsub(/.*\/([^\/]+)$/, '\1')
+        template_id = (template.id || template.href).to_s.gsub(/.*\/([^\/]+)$/, '\1')
         vsys_id = client.create_vsys(template_id, name)['vsysId'][0]
         opts[:id] = vsys_id
         systems(credentials, opts).first
