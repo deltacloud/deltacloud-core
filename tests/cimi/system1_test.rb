@@ -78,8 +78,10 @@ class SystemTemplate < CIMI::Test::Spec
     get cep_json.json["systems"]["href"], :accept => fmt
   end
 
-  it "should add resource machine resource for cleanup", :only => :json do
-    @@created_resources[:machines] << system_created.headers[:location]
+  it "should add system resource for cleanup", :only => :json do
+    @@created_resources ||= {}
+    @@created_resources[:systems] ||= []
+    @@created_resources[:systems] << system_created.headers[:location]
   end
 
   it "should allow a system to be created" do
@@ -135,15 +137,42 @@ class SystemTemplate < CIMI::Test::Spec
             "</Action>",
             :accept => :xml, :content_type => :xml)
       response.code.must_equal 202
-      poll_state(get(fetch(system_created.headers[:location]).id, :accept => :json), "STARTED")
+      poll_state(fetch(system_created.headers[:location]), "STARTED")
       get(fetch(system_created.headers[:location]).id, :accept => :json).json["state"].upcase.must_equal "STARTED"
     end
   end
 
   # 1.11 Check that the machines are started
+  it "should check that the system machines were started successfully", :only => :json do
+    test_system_created = fetch(system_created.headers[:location])
+    sys_mach_coll = fetch(test_system_created.machines.href)
+    sys_mach_coll.system_machines.each do |sys_mach|
+      fetch(sys_mach.machine.href).state.upcase.must_equal "STARTED"
+    end
+  end
 
   # 1.12 Stop the new System
+  it "should be able to stop the system", :only => :json  do
+    test_system_created = get(fetch(system_created.headers[:location]).id, :accept => :json)
+    unless test_system_created.json["state"].eql?("STOPPED")
+      uri = discover_uri_for("stop", "", test_system_created.json["operations"])
+      response = post( uri,
+            "<Action xmlns=\"http://schemas.dmtf.org/cimi/1\">" +
+              "<action> http://http://schemas.dmtf.org/cimi/1/action/stop</action>" +
+            "</Action>",
+            :accept => :xml, :content_type => :xml)
+      response.code.must_equal 202
+      poll_state(fetch(system_created.headers[:location]), "STOPPED")
+      get(fetch(system_created.headers[:location]).id, :accept => :json).json["state"].upcase.must_equal "STOPPED"
+    end
+  end
 
   # 1.13 Check that the machines are stopped
-
+  it "should check that the system machines were stopped successfully", :only => :json do
+    test_system_created = fetch(system_created.headers[:location])
+    sys_mach_coll = fetch(test_system_created.machines.href)
+    sys_mach_coll.system_machines.each do |sys_mach|
+      fetch(sys_mach.machine.href).state.upcase.must_equal "STOPPED"
+    end
+  end
 end
