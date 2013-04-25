@@ -256,12 +256,11 @@ module CIMI::Test::Methods
       log.debug "/#{method.to_s.upcase} #{absolute_url(path)}"
     end
 
-    def poll_state(machine, state)
-      while not machine.state.upcase.eql?(state)
-        puts state
-        puts 'waiting for machine to be: ' + state.to_s()
+    def poll_state(res, *states)
+      while not states.include?(res.state.upcase)
+        log.info "waiting for resource #{res.id} to go from #{res.state} to #{states}"
         sleep(10)
-        machine = machine(:refetch => true)
+        res = fetch(res.id)
       end
     end
 
@@ -509,8 +508,6 @@ class CIMI::Test::Spec < MiniTest::Spec
           @_memoized[k] = retrieve(k, &block)
         end
       end
-      @@_cache[:last_response] ||= {}
-      @@_cache[:last_response][@format] = resp
       parse(resp)
     end
   end
@@ -543,6 +540,9 @@ class CIMI::Test::Spec < MiniTest::Spec
         response.xml.namespaces["xmlns"].must_equal CIMI::Test::CIMI_NAMESPACE
       end
     end
+    @@_cache ||= {}
+    @@_cache[:last_response] ||= {}
+    @@_cache[:last_response][@format] = response
     response
   end
 end
