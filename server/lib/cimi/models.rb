@@ -35,8 +35,6 @@ module CIMI
   end
 end
 
-require 'require_relative' if RUBY_VERSION < '1.9'
-
 require_relative './models/schema'
 require_relative './models/resource'
 require_relative './models/collection'

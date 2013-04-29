@@ -1,19 +1,56 @@
-source "http://rubygems.org"
+source "https://rubygems.org"
 
-gemspec
+gem 'rack-accept', :require => 'rack/accept'
+gem 'sinatra', '>=1.1.6', :require => 'sinatra/base'
+gem 'sinatra-rabbit', :require => 'sinatra/rabbit'
+gem 'json_pure', :require => 'json/pure'
 
-platforms :jruby do
+gem 'haml'
+gem 'rack-accept', :require => 'rack/accept'
+gem 'json_pure', :require => 'json/pure'
+gem 'net-ssh'
+gem 'nokogiri'
+gem 'sequel'
+gem 'tilt'
+gem 'aws', '>=2.7.0'
+gem 'waz-storage', '>=1.1.0'
+gem 'cloudservers'
+gem 'cloudfiles'
+gem 'fog'
+gem 'rest-client'
+gem 'uuidtools'
+gem 'openstack', '>=1.0.9'
+gem 'savon'
+gem 'rbvmomi'
+gem 'rbovirt', '>=0.0.19'
+
+platform :mri do
+  gem 'sqlite3'
+  gem 'thin'
+end
+
+platform :jruby do
+  gem 'jdbc-sqlite3', :require => 'jdbc/sqlite3'
   gem 'jruby-openssl'
   gem 'puma'
 end
 
-group :development do
-  gem "rack-test"
+group :test do
+  gem 'rake'
+  gem "rack-test", :require => 'rack/test'
   gem "minitest"
-  gem "simplecov"
   gem "webmock", '< 1.10'  # VCR wants that version
   gem "vcr"
-  gem "aws"
+  gem 'pry'
+  gem 'nokogiri'
+end
+
+group :ruby18 do
+  gem 'require_relative'
+end
+
+group :coverage do
+  gem 'simplecov'
 end
 
 group :jenkins do

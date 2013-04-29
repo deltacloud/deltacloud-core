@@ -45,7 +45,6 @@ Gem::Specification.new do |s|
     'support/fedora/**',
     'support/condor/bash/**',
     'support/condor/config/**',
-    'lib/*.rb',
     'lib/**/*.rb',
     'lib/**/*.yml',
     'lib/**/*.haml',
@@ -68,62 +67,17 @@ Gem::Specification.new do |s|
   s.extra_rdoc_files = Dir["LICENSE", "DISCLAIMER", "NOTICE"]
   s.required_ruby_version = '>= 1.8.6'
   s.has_rdoc = 'false'
-  s.add_dependency('rake', '>= 0.8.7')
-  s.add_dependency('haml', '>= 2.2.17')
-  s.add_dependency('sinatra-rabbit', '>= 1.1.6')
-  s.add_dependency('rack', '>= 1.0.0')
-  s.add_dependency('rack-accept')
-  s.add_dependency('json_pure', '>= 1.5.0')
-  s.add_dependency('net-ssh', '>= 2.0.0')
-  s.add_dependency('nokogiri', '>= 1.4.3')
-  s.add_dependency('require_relative') if RUBY_VERSION < '1.9'
 
-  s.add_dependency('sequel')
-  s.add_dependency('tilt')
-  s.add_dependency('sinatra')
-
-
+  <% deps[:runtime].each do |d|%>s.add_dependency('<%=d.name%>', '<%=d.requirement%>')
+  <% end %>
   if RUBY_PLATFORM == 'java'
-    s.add_dependency('jdbc-sqlite3')
-    s.add_dependency('jruby-openssl')
-    s.add_dependency('puma')
+    <% deps[:java].each do |d|%>s.add_dependency('<%=d.name%>', '<%=d.requirement%>')
+    <% end %>
   else
-    s.add_dependency('sqlite3')
-    s.add_dependency('thin', '>= 1.2.5')
+    <% deps[:mri].each do |d|%>s.add_dependency('<%=d.name%>', '<%=d.requirement%>')
+    <% end %>
   end
-
-  # dependencies for various cloud providers:
-
-  # RHEV-M and oVirt
-  s.add_dependency('rbovirt', '>=0.0.19')
-
-  # Amazon EC2 S3
-  s.add_dependency('aws', '>=2.7.0')
-  # Microsoft Azure
-  s.add_dependency('waz-storage', '>=1.1.0')
-
-  # Rackspace Cloudservers Cloudfiles
-  s.add_dependency('cloudservers')
-  s.add_dependency('cloudfiles')
-
-  # Terremark Vcloud Express
-  s.add_dependency('fog', '>= 1.4.0')
-
-  # Rhevm and Condor Cloud
-  s.add_dependency('rest-client')
-
-  # Condor Cloud
-  s.add_dependency('uuidtools', '>= 2.1.1')
-
-  # Openstack Compute and Object-Storage
-  s.add_dependency('openstack', '>= 1.0.9')
-
-  # Aruba Cloud
-  s.add_dependency('savon', '>= 1.0.0')
-
-  # VSphere
-  s.add_dependency('rbvmomi')
-
-
+  <% deps[:dev].each do |d|%>s.add_development_dependency('<%=d.name%>', '<%=d.requirement%>')
+  <% end %>
 
 end
