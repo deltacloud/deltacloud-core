@@ -74,15 +74,6 @@ module CIMI::Model
       self.count = self.entries.size
       if self.class.embedded
         ["id", "href"].each { |a| self[a] = nil if self[a] == "" }
-        # Handle href and id, which are really just aliases of one another
-        unless self.href || self.id
-          raise "Collection #{self.class.name} must have one of id and href set"
-        end
-        if self.href && self.id && self.href != self.id
-          puts "jjv -100- models/collections.rb self.href ->#{self.href}<-"
-          puts "jjv -110- models/collections.rb self.id ->#{self.id}<-"
-          # JJV raise "id and href must be identical for collection #{self.class.name}, id = #{id.inspect}, href = #{href.inspect}"
-        end
         self.href ||= self.id
         self.id ||= self.href
       end
