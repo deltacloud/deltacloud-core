@@ -27,7 +27,6 @@ class Instance
   def authn_feature_failed?
     return true unless authn_error.nil?
   end
-
 end
 
 module Deltacloud
@@ -124,16 +123,18 @@ module Deltacloud
         end
 
         define_instance_states do
+
           start.to( :pending )          .automatically
           pending.to( :running )        .automatically
-          pending.to( :stopping )       .on( :stop )
-          pending.to( :stopped )        .automatically
-          stopped.to( :running )        .on( :start )
           running.to( :running )        .on( :reboot )
           running.to( :stopping )       .on( :stop )
           stopping.to(:stopped)         .automatically
-          stopping.to(:finish)          .automatically
-          stopped.to( :finish )         .automatically
+          stopped.to( :running )        .on( :start )
+          stopped.to(:finish)           .on( :destroy)
+
+          #pending.to( :stopping )       .on( :stop )
+          #pending.to( :stopped )        .automatically
+
         end
 
         # We do not allow users to set the endpoint through environment
@@ -296,6 +297,16 @@ module Deltacloud
           end
         end
 
+
+        def start_instance(credentials, instance_id)
+          ec2 = new_client(credentials)
+          if ec2.start_instances([instance_id])
+            instance(credentials, :id => instance_id)
+          else
+            raise Deltacloud::BackendError.new(500, "Instance", "Instance start failed", "")
+          end
+        end
+
         def run_on_instance(credentials, opts={})
           target = instance(credentials, :id => opts[:id])
           param = {}
@@ -319,6 +330,21 @@ module Deltacloud
           end
         end
 
+        def stop_instance(credentials, instance_id)
+          ec2 = new_client(credentials)
+          # Non EBS backed instances cannot be stopped and only can be terminated.
+          ec2_inst = ec2.describe_instances([instance_id]).first
+          if ec2_inst[:root_device_type] == "ebs"
+            if ec2.stop_instances([instance_id])
+              instance(credentials, :id => instance_id)
+            else
+              raise Deltacloud::BackendError.new(500, "Instance", "Instance stop failed", "")
+            end
+          else
+            destroy_instance(credentials,instance_id)
+          end  
+        end
+
         def destroy_instance(credentials, instance_id)
           ec2 = new_client(credentials)
           if ec2.terminate_instances([instance_id])
@@ -327,8 +353,6 @@ module Deltacloud
             raise Deltacloud::BackendError.new(500, "Instance", "Instance cannot be terminated", "")
           end
         end
-
-        alias :stop_instance :destroy_instance
 
         def metrics(credentials, opts={})
           cw = new_client(credentials, :mon)
@@ -1229,11 +1253,13 @@ module Deltacloud
         def convert_state(ec2_state)
           case ec2_state
             when "terminated"
-              "STOPPED"
+              "FINISH"
             when "stopped"
               "STOPPED"
             when "running"
               "RUNNING"
+            when "stopping"
+              "STOPPING"
             when "pending"
               "PENDING"
             when "shutting-down"
