@@ -39,7 +39,8 @@ group :test do
   gem 'rake'
   gem "rack-test", :require => 'rack/test'
   gem "minitest", '< 5.0.0'
-  gem "webmock", '< 1.10'  # VCR wants that version
+  gem "webmock"
+  gem "excon", '>=0.9.6'
   gem "vcr"
   gem 'pry'
   gem 'nokogiri'
