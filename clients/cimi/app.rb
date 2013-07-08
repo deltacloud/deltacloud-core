@@ -22,12 +22,12 @@ module CIMI::Frontend
     use CIMI::Frontend::Address
     use CIMI::Frontend::AddressTemplate
     use CIMI::Frontend::CloudEntryPoint
+    use CIMI::Frontend::Credential
     use CIMI::Frontend::ForwardingGroup
     use CIMI::Frontend::ForwardingGroupTemplate
     use CIMI::Frontend::MachineConfiguration
     use CIMI::Frontend::MachineImage
     use CIMI::Frontend::Machine
-    use CIMI::Frontend::MachineAdmin
     use CIMI::Frontend::MachineTemplate
     use CIMI::Frontend::VolumeConfiguration
     use CIMI::Frontend::VolumeImage
@@ -38,6 +38,7 @@ module CIMI::Frontend
     use CIMI::Frontend::NetworkPortTemplate
     use CIMI::Frontend::NetworkTemplate
     use CIMI::Frontend::NetworkPort
+    use CIMI::Frontend::ResourceMetadata
     use Rack::Session::Cookie
 
     helpers CIMI::Frontend::Helper
