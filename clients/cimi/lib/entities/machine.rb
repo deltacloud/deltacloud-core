@@ -69,7 +69,7 @@ class CIMI::Frontend::Machine < CIMI::Frontend::Entity
         xml.action "http://schemas.dmtf.org/cimi/1/action/stop"
       }
     end.to_xml
-    entity_action 'machines', 'stop', params[:id], action_xml, credentials
+    entity_action 'machines', 'stop', action_xml, credentials, params[:id]
     flash[:success] = "Machine successfully stopped."
     redirect '/cimi/machines/%s' % params[:id]
   end
@@ -80,7 +80,7 @@ class CIMI::Frontend::Machine < CIMI::Frontend::Entity
         xml.action "http://schemas.dmtf.org/cimi/1/action/start"
       }
     end.to_xml
-    entity_action 'machines', 'start', params[:id], action_xml, credentials
+    entity_action 'machines', 'start', action_xml, credentials, params[:id]
     flash[:success] = "Machine successfully started."
     redirect '/cimi/machines/%s' % params[:id]
   end
@@ -91,7 +91,7 @@ class CIMI::Frontend::Machine < CIMI::Frontend::Entity
         xml.action "http://schemas.dmtf.org/cimi/1/action/restart"
       }
     end.to_xml
-    entity_action 'machines', 'restart', params[:id], action_xml, credentials
+    entity_action 'machines', 'restart', action_xml, credentials, action_xml
     flash[:success] = "Machine successfully restarted."
     redirect '/cimi/machines/%s' % params[:id]
   end
@@ -112,7 +112,7 @@ class CIMI::Frontend::Machine < CIMI::Frontend::Entity
       result = create_entity('machines', machine_xml, credentials)
       machine = collection_class_for(:machine).from_xml(result)
       flash[:success] = "Machine was successfully created."
-      redirect "/cimi/machines/#{machine.name}", 302
+      redirect "/cimi/machines/#{href_to_id machine.id}", 302
     rescue => e
       flash[:error] = "Machine cannot be created: #{e.message}"
     end
