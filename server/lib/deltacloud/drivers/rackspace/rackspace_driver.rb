@@ -453,7 +453,7 @@ class RackspaceDriver < Deltacloud::BaseDriver
         a << {
           :path => v,
           :contents => Base64.decode64(opts[:"content#{$1}"])
-        }
+        } unless opts[:"content#{$1}"].nil?
       end
       a
     end
