@@ -203,8 +203,14 @@ module Deltacloud
           params[:personality] = extract_personality(opts)
           params[:name] = (opts[:name] && opts[:name].length>0)? opts[:name] : "server#{Time.now.to_i}"
           params[:imageRef] = image_id
-          params[:flavorRef] =  (opts[:hwp_id] && opts[:hwp_id].length>0) ?
-                          opts[:hwp_id] : hardware_profiles(credentials).first.id
+          flavor_id = nil
+	  os.list_flavors.collect do |f|
+	    if f[:name] == opts[:hwp_id] || f[:id] == opts[:hwp_id]
+	      flavor_id = f[:id]
+	    end
+	  end
+	  params[:flavorRef] =  (opts[:hwp_id] && opts[:hwp_id].length>0) ?
+                          flavor_id : hardware_profiles(credentials).first.id
           if opts[:password] && opts[:password].length > 0
             params[:adminPass]=opts[:password]
           end
