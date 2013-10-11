@@ -127,7 +127,8 @@ class VcloudDriver < Deltacloud::BaseDriver
       vcloud = new_client(credentials)
       cat = vcloud.organizations.first.catalogs.first
       #a vcloud.get_catalog(cat.id).body[:CatalogItems].each  do |item| 
-      vcloud.get_catalog(cat.id).body[:CatalogItems][:CatalogItem].each  do |item| 
+      items = vcloud.get_catalog(cat.id).body[:CatalogItems][:CatalogItem]
+      items.each  do |item| 
         #a if item[1][:type] == "application/vnd.vmware.vcloud.catalogItem+xml" then
         if item[:type] == "application/vnd.vmware.vcloud.catalogItem+xml" then
           #a cat_item_id = item[1][:href].split('/').last
