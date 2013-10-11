@@ -202,7 +202,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     end    
     vapp.reload
     Fog::Logger.warning("Delete vapp: " + vapp.id)
-    vcloud.organizations.first.vdcs.first.delete_vapp(vapp.id)
+    vapp.destroy()
   end
 
   #alias_method :stop_instance, :destroy_instance
