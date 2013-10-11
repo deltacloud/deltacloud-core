@@ -126,29 +126,18 @@ class VcloudDriver < Deltacloud::BaseDriver
       images = []
       vcloud = new_client(credentials)
       cat = vcloud.organizations.first.catalogs.first
-      #a vcloud.get_catalog(cat.id).body[:CatalogItems].each  do |item| 
-      items = vcloud.get_catalog(cat.id).body[:CatalogItems][:CatalogItem]
-      items.each  do |item| 
-        #a if item[1][:type] == "application/vnd.vmware.vcloud.catalogItem+xml" then
-        if item[:type] == "application/vnd.vmware.vcloud.catalogItem+xml" then
-          #a cat_item_id = item[1][:href].split('/').last
-          cat_item_id = item[:href].split('/').last
-          cat_item = vcloud.get_catalog_item(cat_item_id)
-          vapp_template_id = cat_item.body[:Entity][:href].split('/').last
-          vapp_template = vcloud.get_vapp_template(vapp_template_id)
-          images << Image.new(
-            :id => vapp_template_id, #item[1][:href].split('/').last,
-            #a :name => item[1][:name],
-            :name => item[:name],
+      cat.catalog_items.each do |item|
+        vapp_template_id = item.vapp_template_id
+        vapp_template = vcloud.get_vapp_template(vapp_template_id)
+        images << Image.new(
+            :id => vapp_template_id,
+            :name => item.name,
             :state => convert_creation_status(vapp_template.body[:status]),
             :architecture => "",
             :hardware_profiles => hardware_profiles(nil),
-            #a :description => item[1][:name]
-            :description => item[:name]
-          )
-          #a Fog::Logger.warning "Image. vappt=" + item[1][:href].split('/').last
-          Fog::Logger.warning "Image. vappt=" + item[:href].split('/').last
-        end
+            :description => item.name
+        )
+        Fog::Logger.warning "Image. vappt=" + item.id
       end
       images = filter_on( images, :id, opts )
       images
