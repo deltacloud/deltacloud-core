@@ -1,6 +1,7 @@
 require 'fog'
 #require 'excon'
 #require 'nokogiri'
+require 'thread'
 
 module Deltacloud
   module Drivers
@@ -10,8 +11,52 @@ class VcloudDriver < Deltacloud::BaseDriver
   feature :instances, :user_name do
     { :max_length => 50 }
   end
-
+  
   define_hardware_profile('default')
+  
+  def hardware_profiles(credentials, opts = {})
+    # TODO: Instead of hard-coding the hardware profile values, they should be kept in some external location (like file or some service), and read from there
+    @hardware_profiles = []
+    # Follow the deltacloud convention of having numeric ids for the profiles
+    for i in 1..5 do
+      profile_name = ""
+      hwp = ::Deltacloud::HardwareProfile.new(i.to_s) do
+        case i
+        when 1
+          profile_name = 'm1.tiny'
+          cpu 1
+          memory 512
+        when 2
+          profile_name = 'm1.small'
+          cpu 1
+          memory 2048
+        when 3
+          profile_name = 'm1.medium'
+          cpu 2
+          memory 4096
+        when 4
+          profile_name = 'm1.large'
+          cpu 4
+          memory 8192
+        when 5
+          profile_name = 'm1.xlarge'
+          cpu 8
+          memory 16384
+        end
+        #storage - not supported 
+        #architecture 'x86_64'
+      end
+      hwp.name = profile_name
+      @hardware_profiles << hwp
+    end
+    filter_hardware_profiles(@hardware_profiles, opts)
+  end
+  
+  # For keeping record of "privately pending" instances.
+  # i.e. instances, that have been created, but that still need some initialization work
+  # that is done in our thread.
+  @@pendingInstances = Hash.new
+  @@pendingInstancesMutex = Mutex.new
 
   def realms(credentials, opts=nil)
      vcloud = new_client(credentials)
@@ -19,7 +64,7 @@ class VcloudDriver < Deltacloud::BaseDriver
      safely do
         org = vcloud.organizations.first
         vdc = org.vdcs.first
-	realms = [Realm.new(
+        realms = [Realm.new(
             :id => vdc.id,
             :name => vdc.name,
             :state => "available",
@@ -95,7 +140,26 @@ class VcloudDriver < Deltacloud::BaseDriver
         vdc.vapps.each do |vapp|
           vm = vapp.vms.first      
           status = convert_state(vm.status)
-          profile = InstanceProfile.new("default")
+          
+          # Find out if we have own unfinished initialization for the instance ongoing in thread (even if status would be STOPPED)
+          @@pendingInstancesMutex.synchronize {
+            if @@pendingInstances[vapp.id]
+              Fog::Logger.warning("Vapp " + vapp.id + " is pending due to initialization thread.")
+              status = "PENDING";
+            end
+          }
+          # Find out profile based on cpu and memory.
+          profile_name = "default"
+          if status != "PENDING" then
+            profiles = hardware_profiles(credentials)
+            profiles = profiles.select { |hwp| hwp.include?(:cpu, vm.cpu) }
+            profiles = profiles.select { |hwp| hwp.include?(:memory, vm.memory) }
+            if profiles.first
+              profile_name = profiles.first.id.to_s
+            end
+          end
+          
+          profile = InstanceProfile.new(profile_name)
           if status != "PENDING" then
             profile.cpu = vm.cpu
             profile.memory = vm.memory
@@ -154,6 +218,34 @@ class VcloudDriver < Deltacloud::BaseDriver
    end
 
   def create_instance(credentials, image_id, opts)
+    # Parse hardware profile opts
+    cpu_value = 0
+    memory_value = 0
+    if opts["hwp_id"] && opts[:hwp_id].length>0
+      hwp_id = opts[:hwp_id]
+      if hwp = hardware_profiles(credentials, {:id => hwp_id}).first
+        # Pick the values from the specified hardware profile
+        cpu_value = hwp.property("cpu").to_s.to_i
+        memory_value = hwp.property("memory").to_s.to_i
+      else
+        raise "Invalid argument hwp_id=" + hwp_id + ". No such hardware profile."
+      end
+    end
+    if cpu_value == 0 or memory_value == 0
+      default_hwp = hardware_profiles(credentials).first # Just take the first profile
+      cpu_value    = default_hwp.property("cpu").to_s.to_i
+      memory_value = default_hwp.property("memory").to_s.to_i
+    end
+    # Do not support these, because they would allow to set values that don't match any profile
+    #if opts["hwp_cpu"] && opts[:hwp_cpu].length>0
+    #  # Take the cpu value from argument
+    #  cpu_value = opts["hwp_cpu"].to_i
+    #end
+    #if opts["hwp_memory"] && opts[:hwp_memory].length>0
+    #  # Take the memory value from argument
+    #  memory_value = opts["hwp_memory"].to_i
+    #end
+    
     vcloud = new_client(credentials)
     params = {}
     name = (opts[:name] && opts[:name].length>0)? opts[:name] : "server#{Time.now.to_s}"
@@ -167,6 +259,45 @@ class VcloudDriver < Deltacloud::BaseDriver
             :state => convert_creation_status(resp.body[:status]),
             :instance_profile => InstanceProfile.new("default")
           )
+    
+    #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
+    if cpu_value >= 1 or memory_value >= 1
+      @@pendingInstancesMutex.synchronize {
+        @@pendingInstances[inst.id] = true
+      }
+      Thread.new {
+        success = false
+        60.times { # wait at most 60 seconds
+          Fog::Logger.warning("Waiting on a thread for vm to be created...")
+          sleep(1)
+          vapp = vcloud.organizations.first.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
+          if vapp
+            vm = vapp.vms.first
+            if vm
+              Fog::Logger.warning("VM has been created, finalize it.")
+              # Now we have vm running, and can set values
+              if cpu_value >= 0
+                Fog::Logger.warning("Set CPU value.")
+                vm.cpu = cpu_value
+              end
+              if memory_value >= 1
+                Fog::Logger.warning("Set memory value.")
+                vm.memory = memory_value
+              end
+              success = true
+              break
+            end
+          end
+        }
+        @@pendingInstancesMutex.synchronize {
+          @@pendingInstances.delete(inst.id)
+        }
+        if !success
+          raise "VM not running in 60 seconds, giving up."
+        end
+      }
+    end
+    
     inst.actions = instance_actions_for(inst.state)
     inst
   end
@@ -223,7 +354,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     Fog::Logger.warning connection
     connection
   end
-
+  
   exceptions do
     on /AuthFailure/ do
       status 401
