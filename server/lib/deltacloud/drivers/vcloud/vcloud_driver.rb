@@ -275,7 +275,7 @@ class VcloudDriver < Deltacloud::BaseDriver
             vm = vapp.vms.first
             if vm
               Fog::Logger.warning("VM has been created, finalize it.")
-              # Now we have vm running, and can set values
+              # Now we have vm created, and can set values
               if cpu_value >= 0
                 Fog::Logger.warning("Set CPU value.")
                 vm.cpu = cpu_value
@@ -289,11 +289,35 @@ class VcloudDriver < Deltacloud::BaseDriver
             end
           end
         }
+        
+        if success
+          success = false
+          20.times { # wait at most 20 seconds
+            Fog::Logger.warning("Waiting on a thread for vm to be ready to be started...")
+            sleep(1)
+            vapp = vcloud.organizations.first.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
+            if vapp
+              vm = vapp.vms.first
+              if convert_state(vm.status) == "RUNNING"
+                # vCloud vms don't currently go to running state automatically, but just in case..
+                success = true
+                break
+              end
+              if convert_state(vm.status) == "STOPPED"
+                Fog::Logger.warning("VM is ready, start it.")
+                vm.power_on
+                success = true
+                break
+              end
+            end
+          }
+        end
+        
         @@pendingInstancesMutex.synchronize {
           @@pendingInstances.delete(inst.id)
         }
         if !success
-          raise "VM not running in 60 seconds, giving up."
+          raise "Error: Could not configure or start VM."
         end
       }
     end
@@ -313,6 +337,26 @@ class VcloudDriver < Deltacloud::BaseDriver
 
   def stop_instance(credentials, id)
     get_vapp(credentials, id).power_off
+    Thread.new {
+      success = false
+      60.times { # wait at most 60 seconds
+        Fog::Logger.warning("Waiting on a thread for vm to be stopped...")
+        sleep(1)
+        vapp = get_vapp(credentials, id)
+        if vapp
+          vm = vapp.vms.first
+          if convert_state(vm.status) == "STOPPED"
+            Fog::Logger.warning("VM is stopped, destroy it.")
+            destroy_instance(credentials, id)
+            success = true
+            break
+          end
+        end
+      }
+      if !success
+        raise "Error: Could not destory VM."
+      end
+    }
   end
 
   def destroy_instance(credentials, id)
