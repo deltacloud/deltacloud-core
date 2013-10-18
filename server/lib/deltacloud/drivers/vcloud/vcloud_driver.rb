@@ -246,6 +246,12 @@ class VcloudDriver < Deltacloud::BaseDriver
     #  memory_value = opts["hwp_memory"].to_i
     #end
     
+    #Get key opt
+    script = ""
+    if opts["key"] && opts[:key].length>0
+      script = "#!/bin/sh\n\nTUSER=dace\nLOG=/root/vmware-customization-script.log\nPKEY=\""+opts["key"]+"\"\n\n(\necho \"Started: `date`\"\nsudo -u \"$TUSER\" sh -c \"install -d -m 700 ~/.ssh\"\necho \"$PKEY\" |\n\nsudo -u \"$TUSER\" sh -c \"cat >> ~/.ssh/authorized_keys\"\necho \"Finished: `date`\"\n) >> \"$LOG\" 2>&1\n"
+    end
+    
     vcloud = new_client(credentials)
     params = {}
     name = (opts[:name] && opts[:name].length>0)? opts[:name] : "server#{Time.now.to_s}"
@@ -261,7 +267,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           )
     
     #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
-    if cpu_value >= 1 or memory_value >= 1
+    if cpu_value >= 1 or memory_value >= 1 or script != ""
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances[inst.id] = true
       }
@@ -283,6 +289,14 @@ class VcloudDriver < Deltacloud::BaseDriver
               if memory_value >= 1
                 Fog::Logger.warning("Set memory value.")
                 vm.memory = memory_value
+              end
+              if script != ""
+                Fog::Logger.warning("Set customization script.")
+                customization = vm.customization
+                customization.enabled = true
+                customization.script = script
+                customization.has_customization_script = true
+                customization.save
               end
               success = true
               break
