@@ -138,8 +138,12 @@ class VcloudDriver < Deltacloud::BaseDriver
         org = vcloud.organizations.first
         vdc = org.vdcs.first
         vdc.vapps.each do |vapp|
-          vm = vapp.vms.first      
-          status = convert_state(vm.status)
+          vm = vapp.vms.first
+          if !vm
+            status = "PENDING"
+          else
+            status = convert_state(vm.status)
+          end
           
           # Find out if we have own unfinished initialization for the instance ongoing in thread (even if status would be STOPPED)
           @@pendingInstancesMutex.synchronize {
@@ -169,13 +173,17 @@ class VcloudDriver < Deltacloud::BaseDriver
             if disks.instance_of?(Array) then
               total_storage = disks.inject(0) {|s, i| s + i.values.reduce(:+)}
             end  
-          profile.storage = total_storage / 1024
+            profile.storage = total_storage / 1024
+          end
+          private_addresses = []
+          if vm then
+            private_addresses = [InstanceAddress.new(vm.ip_address, :type => :ipv4)]
           end
           inst = Instance.new(
             :id => vapp.id,
             :name => vapp.name,
             :state => status,
-            :private_addresses => [InstanceAddress.new(vm.ip_address, :type => :ipv4)],
+            :private_addresses => private_addresses,
             :instance_profile => profile
           )
           inst.actions = instance_actions_for(inst.state)
@@ -257,6 +265,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     name = (opts[:name] && opts[:name].length>0)? opts[:name] : "server#{Time.now.to_s}"
     network_id = (opts[:network_id] && opts[:network_id].length>0) ?
                           opts[:network_id] : vcloud.organizations.first.networks.first.id
+    network_name = vcloud.organizations.first.networks.select { |v| v.id == network_id}.first.name
     resp = vcloud.instantiate_vapp_template(name, image_id, {:network_id => network_id})
     # return Instance object
     inst = Instance.new(
@@ -267,7 +276,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           )
     
     #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
-    if cpu_value >= 1 or memory_value >= 1 or script != ""
+    if cpu_value >= 1 or memory_value >= 1 or script != "" or network_name != ""
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances[inst.id] = true
       }
@@ -297,6 +306,13 @@ class VcloudDriver < Deltacloud::BaseDriver
                 customization.script = script
                 customization.has_customization_script = true
                 customization.save
+              end
+              if network_name != ""
+                Fog::Logger.warning("Set network: " + network_name)
+                network = vm.network
+                network.network = network_name
+                network.ip_address_allocation_mode="POOL"
+                network.save
               end
               success = true
               break
