@@ -266,7 +266,8 @@ class VcloudDriver < Deltacloud::BaseDriver
     network_id = (opts[:network_id] && opts[:network_id].length>0) ?
                           opts[:network_id] : vcloud.organizations.first.networks.first.id
     network_name = vcloud.organizations.first.networks.select { |v| v.id == network_id}.first.name
-    resp = vcloud.instantiate_vapp_template(name, image_id, {:network_id => network_id})
+    vdc_id = vcloud.organizations.first.vdcs.first.id
+    resp = vcloud.instantiate_vapp_template(name, image_id, {:network_id => network_id, :vdc_id => vdc_id})
     # return Instance object
     inst = Instance.new(
             :id => resp.body[:href].split('/').last,
