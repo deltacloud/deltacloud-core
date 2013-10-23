@@ -313,6 +313,7 @@ class VcloudDriver < Deltacloud::BaseDriver
                 network = vm.network
                 network.network = network_name
                 network.ip_address_allocation_mode="POOL"
+                network.is_connected=true
                 network.save
               end
               success = true
