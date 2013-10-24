@@ -257,7 +257,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     #Get key opt
     script = ""
     if opts["key"] && opts[:key].length>0
-      script = "#!/bin/sh\n\nTUSER=dace\nLOG=/root/vmware-customization-script.log\nPKEY=\""+opts["key"]+"\"\n\n(\necho \"Started: `date`\"\nsudo -u \"$TUSER\" sh -c \"install -d -m 700 ~/.ssh\"\necho \"$PKEY\" |\n\nsudo -u \"$TUSER\" sh -c \"cat >> ~/.ssh/authorized_keys\"\necho \"Finished: `date`\"\n) >> \"$LOG\" 2>&1\n"
+      script = "#!/bin/sh\n\nTUSER=ec2-user\nLOG=/root/vmware-customization-script.log\nPKEY=\""+opts["key"]+"\"\n\n(\necho \"Started: `date`\"\nsudo -u \"$TUSER\" sh -c \"install -d -m 700 ~/.ssh\"\necho \"$PKEY\" |\n\nsudo -u \"$TUSER\" sh -c \"cat >> ~/.ssh/authorized_keys\"\necho \"Finished: `date`\"\n) >> \"$LOG\" 2>&1\n"
     end
     
     vcloud = new_client(credentials)
