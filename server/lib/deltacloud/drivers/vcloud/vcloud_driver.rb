@@ -62,7 +62,8 @@ class VcloudDriver < Deltacloud::BaseDriver
      vcloud = new_client(credentials)
      realms = []
      safely do
-        org = vcloud.organizations.first
+        orgs = vcloud.organizations
+        org = select_organization(orgs, credentials)
         vdc = org.vdcs.first
         realms = [Realm.new(
             :id => vdc.id,
@@ -135,7 +136,8 @@ class VcloudDriver < Deltacloud::BaseDriver
       instances = []
       vcloud = new_client(credentials)
       safely do
-        org = vcloud.organizations.first
+        orgs = vcloud.organizations
+        org = select_organization(orgs, credentials)
         vdc = org.vdcs.first
         vdc.vapps.each do |vapp|
           vm = vapp.vms.first
@@ -197,7 +199,9 @@ class VcloudDriver < Deltacloud::BaseDriver
   def images(credentials, opts=nil)
       images = []
       vcloud = new_client(credentials)
-      cat = vcloud.organizations.first.catalogs.first
+      orgs = vcloud.organizations
+      org = select_organization(orgs, credentials)
+      cat = org.catalogs.first
       cat.catalog_items.each do |item|
         vapp_template_id = item.vapp_template_id
         vapp_template = vcloud.get_vapp_template(vapp_template_id)
@@ -261,12 +265,14 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
     
     vcloud = new_client(credentials)
+    orgs = vcloud.organizations
+    org = select_organization(orgs, credentials)
     params = {}
     name = (opts[:name] && opts[:name].length>0)? opts[:name] : "server#{Time.now.to_s}"
     network_id = (opts[:network_id] && opts[:network_id].length>0) ?
-                          opts[:network_id] : vcloud.organizations.first.networks.first.id
-    network_name = vcloud.organizations.first.networks.select { |v| v.id == network_id}.first.name
-    vdc_id = vcloud.organizations.first.vdcs.first.id
+                          opts[:network_id] : org.networks.first.id
+    network_name = org.networks.select { |v| v.id == network_id}.first.name
+    vdc_id = org.vdcs.first.id
     resp = vcloud.instantiate_vapp_template(name, image_id, {:network_id => network_id, :vdc_id => vdc_id})
     # return Instance object
     inst = Instance.new(
@@ -286,7 +292,7 @@ class VcloudDriver < Deltacloud::BaseDriver
         60.times { # wait at most 60 seconds
           Fog::Logger.warning("Waiting on a thread for vm to be created...")
           sleep(1)
-          vapp = vcloud.organizations.first.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
+          vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
           if vapp
             vm = vapp.vms.first
             if vm
@@ -327,7 +333,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           20.times { # wait at most 20 seconds
             Fog::Logger.warning("Waiting on a thread for vm to be ready to be started...")
             sleep(1)
-            vapp = vcloud.organizations.first.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
+            vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
             if vapp
               vm = vapp.vms.first
               if convert_state(vm.status) == "RUNNING"
@@ -370,12 +376,14 @@ class VcloudDriver < Deltacloud::BaseDriver
   def stop_instance(credentials, id)
     get_vapp(credentials, id).power_off
     vcloud = new_client(credentials)
+    orgs = vcloud.organizations
+    org = select_organization(orgs, credentials)
     Thread.new {
       success = false
       60.times { # wait at most 60 seconds
         Fog::Logger.warning("Waiting on a thread for vm to be stopped...")
         sleep(1)
-        vapp = vcloud.organizations.first.vdcs.first.vapps.select { |v| v.id == id }[0]
+        vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
         if vapp
           vm = vapp.vms.first
           if convert_state(vm.status) == "STOPPED"
@@ -398,7 +406,9 @@ class VcloudDriver < Deltacloud::BaseDriver
 
   def destroy_instance(credentials, id)
     vcloud = new_client(credentials)
-    vapp = vcloud.organizations.first.vdcs.first.vapps.select { |v| v.id == id }[0]
+    orgs = vcloud.organizations
+    org = select_organization(orgs, credentials)
+    vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
     if vapp.deployed then
       vapp.undeploy
     end    
@@ -417,7 +427,9 @@ class VcloudDriver < Deltacloud::BaseDriver
  private
   def get_vapp(credentials, vapp_id)
     vcloud = new_client(credentials)
-    vcloud.organizations.first.vdcs.first.vapps.select { |v| v.id == vapp_id }[0]
+    orgs = vcloud.organizations
+    org = select_organization(orgs, credentials)
+    org.vdcs.first.vapps.select { |v| v.id == vapp_id }[0]
   end
 
  private
@@ -434,6 +446,20 @@ class VcloudDriver < Deltacloud::BaseDriver
     )
     Fog::Logger.warning connection
     connection
+  end
+  
+ private
+  def select_organization(orgs, credentials)
+    org = orgs.first
+    tokens = credentials.user.split("@")
+    if tokens.length >= 1
+      organization_name = tokens[1]
+      selected_org = orgs.get_by_name(organization_name)
+      if selected_org
+        org = selected_org
+      end
+    end
+    org
   end
   
   exceptions do
