@@ -83,6 +83,9 @@ class VcloudDriver < Deltacloud::BaseDriver
         "STOPPED"
       when "on"
         "RUNNING"
+      when "unknown"
+         # suspended vm gives "unknown" state
+         "STOPPED"
       else
         "PENDING"
     end
