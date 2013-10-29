@@ -272,6 +272,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     org = select_organization(orgs, credentials)
     params = {}
     name = (opts[:name] && opts[:name].length>0)? opts[:name] : "server#{Time.now.to_s}"
+    computer_name = name
     network_id = (opts[:network_id] && opts[:network_id].length>0) ?
                           opts[:network_id] : org.networks.first.id
     network_name = org.networks.select { |v| v.id == network_id}.first.name
@@ -286,7 +287,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           )
     
     #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
-    if cpu_value >= 1 or memory_value >= 1 or script != "" or network_name != ""
+    if cpu_value >= 1 or memory_value >= 1 or script != "" or network_name != "" or computer_name != ""
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances[inst.id] = true
       }
@@ -309,12 +310,13 @@ class VcloudDriver < Deltacloud::BaseDriver
                 Fog::Logger.warning("Set memory value.")
                 vm.memory = memory_value
               end
-              if script != ""
-                Fog::Logger.warning("Set customization script.")
+              if script != "" or computer_name != ""
+                Fog::Logger.warning("Set customization.")
                 customization = vm.customization
                 customization.enabled = true
                 customization.script = script
-                customization.has_customization_script = true
+                customization.has_customization_script = (script != "")
+                customization.computer_name = computer_name
                 customization.save
               end
               if network_name != ""
