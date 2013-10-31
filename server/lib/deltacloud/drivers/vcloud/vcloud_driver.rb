@@ -23,28 +23,28 @@ class VcloudDriver < Deltacloud::BaseDriver
       hwp = ::Deltacloud::HardwareProfile.new(i.to_s) do
         case i
         when 1
-          profile_name = 'm1.tiny'
+          profile_name = 'XS'
           cpu 1
-          memory 512
+          memory 1024
         when 2
-          profile_name = 'm1.small'
+          profile_name = 'S'
           cpu 1
           memory 2048
         when 3
-          profile_name = 'm1.medium'
-          cpu 2
+          profile_name = 'M'
+          cpu 1
           memory 4096
         when 4
-          profile_name = 'm1.large'
-          cpu 4
+          profile_name = 'L'
+          cpu 2
           memory 8192
         when 5
-          profile_name = 'm1.xlarge'
-          cpu 8
+          profile_name = 'XL'
+          cpu 4
           memory 16384
         end
         #storage - not supported 
-        #architecture 'x86_64'
+        architecture 'x86_64'
       end
       hwp.name = profile_name
       @hardware_profiles << hwp
@@ -293,7 +293,7 @@ class VcloudDriver < Deltacloud::BaseDriver
       }
       Thread.new {
         success = false
-        60.times { # wait at most 60 seconds
+        600.times { # wait at most 600 seconds, i.e. 10 minutes
           Fog::Logger.warning("Waiting on a thread for vm to be created...")
           sleep(1)
           vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
@@ -335,7 +335,7 @@ class VcloudDriver < Deltacloud::BaseDriver
         
         if success
           success = false
-          20.times { # wait at most 20 seconds
+          60.times { # wait at most 60 seconds
             Fog::Logger.warning("Waiting on a thread for vm to be ready to be started...")
             sleep(1)
             vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
