@@ -228,6 +228,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     stopped.to(:running)          .on( :start )
     running.to(:running)          .on( :reboot )
     running.to(:stopping)         .on( :stop )
+    running.to(:finish)           .on( :destroy )
     stopping.to(:stopped)         .automatically
     stopped.to(:finish)           .on( :destroy )
    end
@@ -310,6 +311,14 @@ class VcloudDriver < Deltacloud::BaseDriver
                 Fog::Logger.warning("Set memory value.")
                 vm.memory = memory_value
               end
+              if network_name != ""
+                Fog::Logger.warning("Set network: " + network_name)
+                network = vm.network
+                network.network = network_name
+                network.ip_address_allocation_mode="POOL"
+                network.is_connected=true
+                network.save
+              end
               if script != "" or computer_name != ""
                 Fog::Logger.warning("Set customization.")
                 customization = vm.customization
@@ -318,14 +327,6 @@ class VcloudDriver < Deltacloud::BaseDriver
                 customization.has_customization_script = (script != "")
                 customization.computer_name = computer_name
                 customization.save
-              end
-              if network_name != ""
-                Fog::Logger.warning("Set network: " + network_name)
-                network = vm.network
-                network.network = network_name
-                network.ip_address_allocation_mode="POOL"
-                network.is_connected=true
-                network.save
               end
               success = true
               break
@@ -380,6 +381,8 @@ class VcloudDriver < Deltacloud::BaseDriver
 
   def stop_instance(credentials, id)
     get_vapp(credentials, id).power_off
+    #TODO: remove the rest of the function when support for destroying stopped instance automatically is
+    #      no longer wanted.
     vcloud = new_client(credentials)
     orgs = vcloud.organizations
     org = select_organization(orgs, credentials)
@@ -414,12 +417,42 @@ class VcloudDriver < Deltacloud::BaseDriver
     orgs = vcloud.organizations
     org = select_organization(orgs, credentials)
     vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
-    if vapp.deployed then
-      vapp.undeploy
-    end    
-    vapp.reload
-    Fog::Logger.warning("Delete vapp: " + vapp.id)
-    vapp.destroy()
+    status = convert_creation_status(vapp.status)
+    if status != "STOPPED"
+      Fog::Logger.warning("Request to destroy running instance, stop it first.")
+      vapp.power_off
+      Thread.new {
+        success = false
+        60.times { # wait at most 60 seconds
+          Fog::Logger.warning("Waiting on a thread for vm to be stopped...")
+          sleep(1)
+          vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
+          if vapp
+            vm = vapp.vms.first
+            if convert_state(vm.status) == "STOPPED"
+              Fog::Logger.warning("VM is stopped, destroy it.")
+              if vapp.deployed then
+                vapp.undeploy
+              end
+              vapp.reload
+              vapp.destroy()
+              success = true
+              break
+            end
+          end
+        }
+        if !success
+          raise "Error: Could not destory VM."
+        end
+      }
+    else
+      if vapp.deployed then
+        vapp.undeploy
+      end    
+      vapp.reload
+      Fog::Logger.warning("Delete vapp: " + vapp.id)
+      vapp.destroy()
+    end
   end
 
   #alias_method :stop_instance, :destroy_instance
