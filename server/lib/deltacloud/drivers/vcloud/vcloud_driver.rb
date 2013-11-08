@@ -472,6 +472,8 @@ class VcloudDriver < Deltacloud::BaseDriver
 
  private
   def new_client(credentials)
+    # Support also + as separator between username and tenant
+    credentials.user.gsub!('+','@')
     Fog::Logger.warning credentials
     connection = Fog::Compute::VcloudDirector.new(
       :vcloud_director_username => credentials.user,
@@ -491,7 +493,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     org = orgs.first
     tokens = credentials.user.split("@")
     if tokens.length >= 1
-      organization_name = tokens[1]
+      organization_name = tokens.last
       selected_org = orgs.get_by_name(organization_name)
       if selected_org
         org = selected_org
