@@ -381,35 +381,6 @@ class VcloudDriver < Deltacloud::BaseDriver
 
   def stop_instance(credentials, id)
     get_vapp(credentials, id).power_off
-    #TODO: remove the rest of the function when support for destroying stopped instance automatically is
-    #      no longer wanted.
-    vcloud = new_client(credentials)
-    orgs = vcloud.organizations
-    org = select_organization(orgs, credentials)
-    Thread.new {
-      success = false
-      60.times { # wait at most 60 seconds
-        Fog::Logger.warning("Waiting on a thread for vm to be stopped...")
-        sleep(1)
-        vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
-        if vapp
-          vm = vapp.vms.first
-          if convert_state(vm.status) == "STOPPED"
-            Fog::Logger.warning("VM is stopped, destroy it.")
-            if vapp.deployed then
-              vapp.undeploy
-            end
-            vapp.reload
-            vapp.destroy()
-            success = true
-            break
-          end
-        end
-      }
-      if !success
-        raise "Error: Could not destory VM."
-      end
-    }
   end
 
   def destroy_instance(credentials, id)
