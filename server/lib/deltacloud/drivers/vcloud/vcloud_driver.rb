@@ -262,13 +262,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     #  # Take the memory value from argument
     #  memory_value = opts["hwp_memory"].to_i
     #end
-    
-    #Get key opt
-    script = ""
-    if opts["key"] && opts[:key].length>0
-      script = "#!/bin/sh\n\nTUSER=ec2-user\nLOG=/root/vmware-customization-script.log\nPKEY=\""+opts["key"]+"\"\n\n(\necho \"Started: `date`\"\nsu \"$TUSER\"  -c \"install -d -m 700 ~/.ssh\"\necho \"$PKEY\" |\n\nsu \"$TUSER\" -c \"cat >> ~/.ssh/authorized_keys\"\necho \"Finished: `date`\"\n) >> \"$LOG\" 2>&1\n"
-    end
-    
+
     vcloud = new_client(credentials)
     orgs = vcloud.organizations
     org = select_organization(orgs, credentials)
@@ -289,7 +283,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           )
     
     #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
-    if cpu_value >= 1 or memory_value >= 1 or script != "" or network_name != "" or computer_name != ""
+    if cpu_value >= 1 or memory_value >= 1 or network_name != "" or computer_name != ""
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances[inst.id] = true
       }
@@ -320,12 +314,11 @@ class VcloudDriver < Deltacloud::BaseDriver
                 network.is_connected=true
                 network.save
               end
-              if script != "" or computer_name != ""
+              if computer_name != ""
                 Fog::Logger.warning("Set customization.")
                 customization = vm.customization
                 customization.enabled = true
-                customization.script = script
-                customization.has_customization_script = (script != "")
+                customization.has_customization_script = false
                 customization.computer_name = computer_name
                 customization.save
               end
@@ -364,11 +357,97 @@ class VcloudDriver < Deltacloud::BaseDriver
         if !success
           raise "Error: Could not configure or start VM."
         end
+        process_ovf_metadata(vcloud, org, inst.id, opts)
       }
     end
     
     inst.actions = instance_actions_for(inst.state)
     inst
+  end
+
+  def process_ovf_metadata(vcloud, org, instance_id, opts)
+    ssh_keys = opts[:key]
+    user_data = opts[:user_data]
+    if ssh_keys or user_data
+      Thread.new{ 60.times{
+        Fog::Logger.warning("Processing ovf metadata")
+        sleep(1)
+        vapp = org.vdcs.first.vapps.select { |v| v.id == instance_id }[0]
+        if vapp
+          vm = vapp.vms.first
+          state = convert_state(vm.status)
+          Fog::Logger.warning("Current VM state: " + state)
+          if state == "RUNNING"
+            ps = vcloud.get_product_sections_vapp(instance_id)
+            items = extract_ps_items(ps.data[:body])
+            if user_data
+              items = add_ps_item(items, {"key"=>"user-data", "type"=>"string", "value"=>user_data})
+            end
+            if ssh_keys
+              items = add_ps_item(items, {"key"=>"public-keys", "type"=>"string", "value"=>ssh_keys})
+            end
+            ps = vcloud.put_product_sections_vapp(instance_id, items)
+            Fog::Logger.warning("Ovf metadata uploaded")
+            break
+          end
+        end
+      }}
+    end
+  end
+  def extract_ps_items(body)
+    items = []
+    if body
+      ps_name = find_section(body.keys, "ProductSection")
+      if ps_name
+        ps = body[ps_name]
+        if ps and ps.keys
+          props_name = find_section(ps.keys, "Property")
+          holder = ps[props_name];
+          if holder and holder.kind_of?(Array)
+            for xmlobj in holder
+              if xmlobj.respond_to?("keys")
+                items << create_ps_item(xmlobj)
+              end
+            end
+          elsif holder and holder.respond_to?("keys") then
+            items << create_ps_item(holder)
+          end
+        end
+      end
+    end
+    items
+  end
+
+  def add_ps_item(item_list, to_add)
+    result = []
+    for item in item_list
+      if item["key"] != to_add["key"]
+        result << item
+      end
+    end
+    result << to_add
+    result
+  end
+
+  def create_ps_item(xmlobj)
+    type_name = find_section(xmlobj.keys, "type")
+    key_name = find_section(xmlobj.keys, "key")
+    value_name = find_section(xmlobj.keys, "value")
+    item = {}
+    item["value"] = xmlobj[value_name]
+    item["key"] = xmlobj[key_name]
+    item["type"] = xmlobj[type_name]
+    item
+  end
+
+  def find_section(token_array, name)
+    name = name.downcase
+    for token in token_array
+      if token.to_s.downcase.end_with?(name)
+        return token
+      end
+    end
+    return ""
   end
 
   def reboot_instance(credentials, id)
