@@ -357,7 +357,7 @@ class VcloudDriver < Deltacloud::BaseDriver
         if !success
           raise "Error: Could not configure or start VM."
         end
-        process_ovf_metadata(vcloud, org, inst.id, opts)
+#        process_ovf_metadata(vcloud, org, inst.id, opts)
       }
     end
     
