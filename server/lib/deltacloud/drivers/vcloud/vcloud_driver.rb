@@ -357,7 +357,7 @@ class VcloudDriver < Deltacloud::BaseDriver
         if !success
           raise "Error: Could not configure or start VM."
         end
-#        process_ovf_metadata(vcloud, org, inst.id, opts)
+        process_ovf_metadata(vcloud, org, inst.id, opts)
       }
     end
     
@@ -386,7 +386,8 @@ class VcloudDriver < Deltacloud::BaseDriver
             if ssh_keys
               items = add_ps_item(items, {"key"=>"public-keys", "type"=>"string", "value"=>ssh_keys})
             end
-            ps = vcloud.put_product_sections_vapp(instance_id, items)
+            task = vcloud.put_product_sections_vapp(instance_id, items).body
+            vcloud.process_task(task)
             Fog::Logger.warning("Ovf metadata uploaded")
             break
           end
