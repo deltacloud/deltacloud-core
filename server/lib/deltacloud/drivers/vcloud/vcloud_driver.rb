@@ -263,6 +263,12 @@ class VcloudDriver < Deltacloud::BaseDriver
     #  memory_value = opts["hwp_memory"].to_i
     #end
 
+    #Get key opt
+    script = ""
+    if opts["key"] && opts[:key].length>0
+      script = "#!/bin/sh\n\nTUSER=ec2-user\nLOG=/root/vmware-customization-script.log\nPKEY=\""+opts["key"]+"\"\n\n(\necho \"Started: `date`\"\nsu \"$TUSER\" -c \"install -d -m 700 ~/.ssh\"\necho \"$PKEY\" |\n\nsu \"$TUSER\" -c \"cat >> ~/.ssh/authorized_keys\"\necho \"Finished: `date`\"\n) >> \"$LOG\" 2>&1\n"
+    end
+
     vcloud = new_client(credentials)
     orgs = vcloud.organizations
     org = select_organization(orgs, credentials)
@@ -283,7 +289,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           )
     
     #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
-    if cpu_value >= 1 or memory_value >= 1 or network_name != "" or computer_name != ""
+    if cpu_value >= 1 or memory_value >= 1 or script != "" or network_name != "" or computer_name != ""
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances[inst.id] = true
       }
@@ -314,11 +320,12 @@ class VcloudDriver < Deltacloud::BaseDriver
                 network.is_connected=true
                 network.save
               end
-              if computer_name != ""
+              if script != "" or computer_name != ""
                 Fog::Logger.warning("Set customization.")
                 customization = vm.customization
                 customization.enabled = true
-                customization.has_customization_script = false
+                customization.script = script
+                customization.has_customization_script = (script != "")
                 customization.computer_name = computer_name
                 customization.save
               end
