@@ -342,6 +342,7 @@ class VcloudDriver < Deltacloud::BaseDriver
             sleep(1)
             vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
             if vapp
+              process_ovf_metadata(credentials, vcloud, org, inst.id, opts)
               vm = vapp.vms.first
               if convert_state(vm.status) == "RUNNING"
                 # vCloud vms don't currently go to running state automatically, but just in case..
@@ -364,7 +365,6 @@ class VcloudDriver < Deltacloud::BaseDriver
         if !success
           raise "Error: Could not configure or start VM."
         end
-        process_ovf_metadata(vcloud, org, inst.id, opts)
       }
     end
     
@@ -376,30 +376,50 @@ class VcloudDriver < Deltacloud::BaseDriver
     ssh_keys = opts[:key]
     user_data = opts[:user_data]
     if ssh_keys or user_data
-      Thread.new{ 60.times{
-        Fog::Logger.warning("Processing ovf metadata")
-        sleep(1)
-        vapp = org.vdcs.first.vapps.select { |v| v.id == instance_id }[0]
-        if vapp
-          vm = vapp.vms.first
-          state = convert_state(vm.status)
-          Fog::Logger.warning("Current VM state: " + state)
-          if state == "RUNNING"
-            ps = vcloud.get_product_sections_vapp(instance_id)
-            items = extract_ps_items(ps.data[:body])
-            if user_data
-              items = add_ps_item(items, {"key"=>"user-data", "type"=>"string", "value"=>user_data})
-            end
-            if ssh_keys
-              items = add_ps_item(items, {"key"=>"public-keys", "type"=>"string", "value"=>ssh_keys})
-            end
-            task = vcloud.put_product_sections_vapp(instance_id, items).body
-            vcloud.process_task(task)
-            Fog::Logger.warning("Ovf metadata uploaded")
-            break
-          end
+      Fog::Logger.warning("Processing ovf metadata")
+      vapp = org.vdcs.first.vapps.select { |v| v.id == instance_id }[0]
+      if ! vapp
+        Fog::Logger.warning("No vapp found, aborting")
+        return
+      end
+      vm = vapp.vms.first
+      if ! vm
+        Fog::Logger.warning("No vm found, aborting")
+        return
+      end
+      state = convert_state(vm.status)
+      if state != "STOPPED"
+        Fog::Logger.warning("Trying to stop instance")
+        por = vapp.power_off
+      end
+      sleep(1)
+      vapp = org.vdcs.first.vapps.select { |v| v.id == instance_id }[0]
+      if ! vapp
+        Fog::Logger.warning("No vapp found, aborting")
+        return
+      end
+      vm = vapp.vms.first
+      if ! vm
+        Fog::Logger.warning("No vm found, aborting")
+        return
+      end
+      state = convert_state(vm.status)
+      Fog::Logger.warning("Current VM state: " + state)
+      if state == "STOPPED"
+        ps = vcloud.get_product_sections_vapp(instance_id)
+        items = extract_ps_items(ps.data[:body])
+        if user_data
+          items = add_ps_item(items, {"key"=>"user-data", "type"=>"string", "value"=>user_data})
         end
-      }}
+        if ssh_keys
+          items = add_ps_item(items, {"key"=>"public-keys", "type"=>"string", "value"=>ssh_keys})
+        end
+        task = vcloud.put_product_sections_vapp(instance_id, items).body
+        vcloud.process_task(task)
+        Fog::Logger.warning("Ovf metadata uploaded")
+      else
+        Fog::Logger.warning("Can not upload OVF data for not stopped instance")
+      end
     end
   end
   def extract_ps_items(body)
