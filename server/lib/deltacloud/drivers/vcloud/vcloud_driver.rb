@@ -342,7 +342,7 @@ class VcloudDriver < Deltacloud::BaseDriver
             sleep(1)
             vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
             if vapp
-              process_ovf_metadata(credentials, vcloud, org, inst.id, opts)
+              process_ovf_metadata(vcloud, org, inst.id, opts)
               vm = vapp.vms.first
               if convert_state(vm.status) == "RUNNING"
                 # vCloud vms don't currently go to running state automatically, but just in case..
@@ -390,7 +390,7 @@ class VcloudDriver < Deltacloud::BaseDriver
       state = convert_state(vm.status)
       if state != "STOPPED"
         Fog::Logger.warning("Trying to stop instance")
-        por = vapp.power_off
+        vapp.power_off
       end
       sleep(1)
       vapp = org.vdcs.first.vapps.select { |v| v.id == instance_id }[0]
