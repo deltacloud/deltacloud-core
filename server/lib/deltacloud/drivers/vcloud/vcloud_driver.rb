@@ -406,6 +406,7 @@ class VcloudDriver < Deltacloud::BaseDriver
       state = convert_state(vm.status)
       Fog::Logger.warning("Current VM state: " + state)
       if state == "STOPPED"
+        set_iso_transport(vcloud, vm)
         ps = vcloud.get_product_sections_vapp(instance_id)
         items = extract_ps_items(ps.data[:body])
         if user_data
@@ -422,6 +423,18 @@ class VcloudDriver < Deltacloud::BaseDriver
       end
     end
   end
+
+  def set_iso_transport(vcloud, vm)
+    Fog::Logger.warning("Setting ISO transport")
+    r = vcloud.get_virtual_hardware_section(vm.id)
+    xml_doc  = Nokogiri::XML(r.data()[:body])
+    xml_doc.xpath("//ovf:VirtualHardwareSection").attr("ovf:transport", "iso")
+    Fog::Logger.warning("ISO transport requested")
+    task = vcloud.put_vm_hardware_section(vm_id, xml_doc.to_s).body
+    vcloud.process_task(task)
+    Fog::Logger.warning("ISO transport done")
+  end
+  
   def extract_ps_items(body)
     items = []
     if body
