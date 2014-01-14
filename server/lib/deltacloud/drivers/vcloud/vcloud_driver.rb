@@ -204,19 +204,20 @@ class VcloudDriver < Deltacloud::BaseDriver
       vcloud = new_client(credentials)
       orgs = vcloud.organizations
       org = select_organization(orgs, credentials)
-      cat = org.catalogs.first
-      cat.catalog_items.each do |item|
-        vapp_template_id = item.vapp_template_id
-        vapp_template = vcloud.get_vapp_template(vapp_template_id)
-        images << Image.new(
-            :id => vapp_template_id,
-            :name => item.name,
-            :state => convert_creation_status(vapp_template.body[:status]),
-            :architecture => "",
-            :hardware_profiles => hardware_profiles(nil),
-            :description => item.name
-        )
-        Fog::Logger.warning "Image. vappt=" + item.id
+      org.catalogs.each do |cat|
+        cat.catalog_items.each do |item|
+          vapp_template_id = item.vapp_template_id
+          vapp_template = vcloud.get_vapp_template(vapp_template_id)
+          images << Image.new(
+              :id => vapp_template_id,
+              :name => item.name,
+              :state => convert_creation_status(vapp_template.body[:status]),
+              :architecture => "",
+              :hardware_profiles => hardware_profiles(nil),
+              :description => item.name
+          )
+          Fog::Logger.warning "Image. vappt=" + item.id
+        end
       end
       images = filter_on( images, :id, opts )
       images
@@ -327,6 +328,9 @@ class VcloudDriver < Deltacloud::BaseDriver
                 customization.script = script
                 customization.has_customization_script = (script != "")
                 customization.computer_name = computer_name
+                if ! customization.admin_password_enabled
+                  customization.admin_password = nil
+                end
                 begin
                   customization.save
                 rescue Exception => e
