@@ -328,7 +328,7 @@ class VcloudDriver < Deltacloud::BaseDriver
                 customization.script = script
                 customization.has_customization_script = (script != "")
                 customization.computer_name = computer_name
-                if ! customization.admin_password_enabled
+                if ! customization.admin_password_loaded?
                   customization.admin_password = nil
                 end
                 begin
