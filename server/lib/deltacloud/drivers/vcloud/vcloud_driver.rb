@@ -323,6 +323,7 @@ class VcloudDriver < Deltacloud::BaseDriver
               end
               if script != "" or computer_name != ""
                 Fog::Logger.warning("Set customization.")
+                begin
                 customization = vm.customization
                 customization.enabled = true
                 customization.script = script
@@ -331,7 +332,7 @@ class VcloudDriver < Deltacloud::BaseDriver
                 if ! customization.admin_password_loaded?
                   customization.admin_password = nil
                 end
-                begin
+#                begin
                   customization.save
                 rescue Exception => e
                   Fog::Logger.warning("Saving customization error: " + e.message)
