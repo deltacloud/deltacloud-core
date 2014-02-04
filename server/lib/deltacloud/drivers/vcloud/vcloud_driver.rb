@@ -445,7 +445,8 @@ class VcloudDriver < Deltacloud::BaseDriver
       Fog::Logger.warning("Can not proceed with ovf on not stopped instance")
       return
     end
-    set_iso_transport(vcloud, vm)
+    #It does not work with vcloud at the moment
+    #set_iso_transport(vcloud, vm)
     if ssh_keys or user_data
       ps = vcloud.get_product_sections_vapp(instance_id)
       items = extract_ps_items(ps.data[:body])
