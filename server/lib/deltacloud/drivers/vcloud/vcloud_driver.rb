@@ -141,11 +141,15 @@ class VcloudDriver < Deltacloud::BaseDriver
       safely do
         orgs = vcloud.organizations
         org = select_organization(orgs, credentials)
+        created_map = build_task_map(org)
         vdc = org.vdcs.first
         vdc.vapps.each do |vapp|
           vm = vapp.vms.first
           if !vm
-            status = "PENDING"
+            status = "ERROR"
+            if created_map[vapp.id]
+              status = "PENDING"
+            end
           else
             status = convert_state(vm.status)
           end
@@ -159,7 +163,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           }
           # Find out profile based on cpu and memory.
           profile_name = "default"
-          if status != "PENDING" then
+          if status != "PENDING" and status != "ERROR" then
             profiles = hardware_profiles(credentials)
             profiles = profiles.select { |hwp| hwp.include?(:cpu, vm.cpu) }
             profiles = profiles.select { |hwp| hwp.include?(:memory, vm.memory) }
@@ -169,7 +173,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           end
           
           profile = InstanceProfile.new(profile_name)
-          if status != "PENDING" then
+          if status != "PENDING" and status != "ERROR" then
             profile.cpu = vm.cpu
             profile.memory = vm.memory
             disks = vm.hard_disks
@@ -198,6 +202,19 @@ class VcloudDriver < Deltacloud::BaseDriver
       instances = filter_on( instances, :id, opts )
       instances = update_img_profile_info(vcloud, credentials, instances)
       instances
+  end
+
+  def build_task_map(org)
+    map = {}
+    for task in org.tasks()
+      if task.operation_name == 'vdcInstantiateVapp' and task.status == 'running'
+        tmp = task.operation.split('(')
+        tmp = tmp.last.split(')')
+        id = tmp.first
+        map["vapp-"+id] = id
+      end
+    end
+    return map
   end
 
   def update_img_profile_info(vcloud, credentials, instances)
