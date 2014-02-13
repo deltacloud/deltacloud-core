@@ -341,86 +341,83 @@ class VcloudDriver < Deltacloud::BaseDriver
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances[inst.id] = true
       }
-      Thread.new {
-        success = false
-        600.times { # wait at most 600 seconds, i.e. 10 minutes
-          Fog::Logger.warning("Waiting on a thread for vm to be created...")
-          sleep(1)
-          vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
-          if vapp
-            vm = vapp.vms.first
-            if vm
-              Fog::Logger.warning("VM has been created, finalize it.")
-              # Now we have vm created, and can set values
-              if cpu_value >= 0
-                Fog::Logger.warning("Set CPU value.")
-                vm.cpu = cpu_value
-              end
-              if memory_value >= 1
-                Fog::Logger.warning("Set memory value.")
-                vm.memory = memory_value
-              end
-              if network_name != ""
-                Fog::Logger.warning("Set network: " + network_name)
-                network = vm.network
-                network.network = network_name
-                network.ip_address_allocation_mode="POOL"
-                network.is_connected=true
-                network.save
-              end
-              if script != "" or computer_name != ""
-                Fog::Logger.warning("Set customization.")
-                customization = vm.customization
-                customization.enabled = true
-                customization.script = script
-                customization.has_customization_script = (script != "")
-                customization.computer_name = computer_name
-                if ! customization.admin_password_loaded?
-                  customization.admin_password = nil
-                end
-                begin
-                  customization.save
-                rescue Exception => e
-                  Fog::Logger.warning("Saving customization error: " + e.message)
-                end
-              end
-              process_ovf_metadata(vcloud, org, inst.id, opts)
-              success = true
-              break
+      tasks = resp.body[:Tasks]
+      if tasks.respond_to?("keys")
+        vcloud.process_task(tasks[:Task])
+      else
+        for task in tasks
+          vcloud.process_task(task)
+        end
+      end
+      vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
+      if vapp
+        vm = vapp.vms.first
+        if vm
+          Fog::Logger.warning("VM has been created, finalize it.")
+          # Now we have vm created, and can set values
+          if cpu_value >= 0
+            Fog::Logger.warning("Set CPU value.")
+            vm.cpu = cpu_value
+          end
+          if memory_value >= 1
+            Fog::Logger.warning("Set memory value.")
+            vm.memory = memory_value
+          end
+          if network_name != ""
+            Fog::Logger.warning("Set network: " + network_name)
+            network = vm.network
+            network.network = network_name
+            network.ip_address_allocation_mode="POOL"
+            network.is_connected=true
+            network.save
+          end
+          if script != "" or computer_name != ""
+            Fog::Logger.warning("Set customization.")
+            customization = vm.customization
+            customization.enabled = true
+            customization.script = script
+            customization.has_customization_script = (script != "")
+            customization.computer_name = computer_name
+            if ! customization.admin_password_loaded?
+              customization.admin_password = nil
+            end
+            begin
+              customization.save
+            rescue Exception => e
+              Fog::Logger.warning("Saving customization error: " + e.message)
             end
           end
-        }
-        
-        if success
-          success = false
-          60.times { # wait at most 60 seconds
-            Fog::Logger.warning("Waiting on a thread for vm to be ready to be started...")
-            sleep(1)
-            vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
-            if vapp
-              vm = vapp.vms.first
-              if convert_state(vm.status) == "RUNNING"
-                # vCloud vms don't currently go to running state automatically, but just in case..
-                success = true
-                break
-              end
-              if convert_state(vm.status) == "STOPPED"
-                Fog::Logger.warning("VM is ready, start it.")
-                vm.power_on
-                success = true
-                break
-              end
-            end
-          }
+          process_ovf_metadata(vcloud, org, inst.id, opts)
+          success = true
         end
+      end
         
-        @@pendingInstancesMutex.synchronize {
-          @@pendingInstances.delete(inst.id)
-        }
-        if !success
-          raise "Error: Could not configure or start VM."
+      if success
+        success = false
+        Fog::Logger.warning("Waiting on a thread for vm to be ready to be started...")
+        sleep(1)
+        vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
+        if vapp
+          vm = vapp.vms.first
+          vm_state = convert_state(vm.status)
+          if vm_state == "RUNNING"
+            # vCloud vms don't currently go to running state automatically, but just in case..
+            success = true
+          end
+          if vm_state == "STOPPED"
+            Fog::Logger.warning("VM is ready, start it.")
+            vm.power_on
+            success = true
+          end
         end
+      end
+        
+      @@pendingInstancesMutex.synchronize {
+        @@pendingInstances.delete(inst.id)
       }
+      if !success
+        raise "Error: Could not configure or start VM."
+      end
     end
     
     inst.actions = instance_actions_for(inst.state)
