@@ -141,7 +141,7 @@ class VcloudDriver < Deltacloud::BaseDriver
       safely do
         orgs = vcloud.organizations
         org = select_organization(orgs, credentials)
-        created_map = build_task_map(org)
+        created_map = build_ongoing_task_map(org)
         vdc = org.vdcs.first
         vdc.vapps.each do |vapp|
           vm = vapp.vms.first
@@ -204,13 +204,19 @@ class VcloudDriver < Deltacloud::BaseDriver
       instances
   end
 
-  def build_task_map(org)
+  def build_ongoing_task_map(org)
     map = {}
     for task in org.tasks()
-      if task.operation_name == 'vdcInstantiateVapp' and task.status == 'running'
+      if task.status == 'running' or task.status == 'queued' or task.status == 'preRunning'
         tmp = task.operation.split('(')
+        if not tmp or not tmp.last
+          next
+        end
         tmp = tmp.last.split(')')
         id = tmp.first
+        if not id
+          next
+        end
         map["vapp-"+id] = id
       end
     end
