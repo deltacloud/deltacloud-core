@@ -404,7 +404,7 @@ module Deltacloud
           end_time = Time.now.utc.iso8601.to_s
           m.properties.each do |p|
             p.values = cw.get_metric_statistics(p.name,  ['Minimum', 'Maximum', 'Average'],
-                        start_time, end_time, metric_unit_for(p.name), { m.entity => opts[:id]})
+                        start_time, end_time, metric_unit_for(p.name), {:dimensions => { m.entity => opts[:id]}})
           end
           m
         end
