@@ -130,7 +130,6 @@ class VcloudDriver < Deltacloud::BaseDriver
   define_instance_states do
     start.to(:pending)            .on( :create )
     pending.to(:stopped)          .automatically
-    pending.to(:finish)           .on( :destroy )
     stopped.to(:running)          .on( :start )
     running.to(:running)          .on( :reboot )
     running.to(:stopping)         .on( :stop )
