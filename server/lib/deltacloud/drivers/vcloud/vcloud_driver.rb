@@ -42,6 +42,10 @@ class VcloudDriver < Deltacloud::BaseDriver
           profile_name = 'XL'
           cpu 4
           memory 16384
+        when 6
+          profile_name = 'XXL'
+          cpu 6
+          memory 16384
         end
         #storage - not supported 
         architecture 'x86_64'
