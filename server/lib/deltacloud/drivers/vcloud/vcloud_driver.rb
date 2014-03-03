@@ -18,7 +18,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     # TODO: Instead of hard-coding the hardware profile values, they should be kept in some external location (like file or some service), and read from there
     @hardware_profiles = []
     # Follow the deltacloud convention of having numeric ids for the profiles
-    for i in 1..5 do
+    for i in 1..6 do
       profile_name = ""
       hwp = ::Deltacloud::HardwareProfile.new(i.to_s) do
         case i
