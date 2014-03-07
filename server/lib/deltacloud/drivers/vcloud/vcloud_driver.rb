@@ -196,7 +196,37 @@ class VcloudDriver < Deltacloud::BaseDriver
         end
       end
       instances = filter_on( instances, :id, opts )
+      instances = update_img_profile_info(vcloud, credentials, instances)
       instances
+  end
+
+  def update_img_profile_info(vcloud, credentials, instances)
+    orgs = vcloud.organizations
+    org = select_organization(orgs, credentials)
+    img_map = {}
+    org.catalogs.each do |cat|
+      cat.catalog_items.each do |item|
+        img_map[item.name] = item.vapp_template_id
+      end
+    end
+    for instance in instances
+      vapp = org.vdcs.first.vapps.select { |v| v.id == instance.id }[0]
+      if not vapp
+        Fog::Logger.warning("update_img_profile_info: no vapp")
+        next
+      end
+      vm = vapp.vms.first
+      if not vm
+        Fog::Logger.warning("update_img_profile_info: no vm for vapp: " + vapp.id)
+        next
+      end
+      if not img_map[vm.name]
+        Fog::Logger.warning("update_img_profile_info: image map has no value for: " + vm.name)
+        next
+      end
+      instance.image_id = img_map[vm.name]
+    end
+    return instances
   end
 	
   def images(credentials, opts=nil)
