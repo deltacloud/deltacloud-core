@@ -90,6 +90,7 @@ Gem::Specification.new do |s|
   else
     s.add_dependency('sqlite3')
     s.add_dependency('thin', '>= 1.2.5')
+    s.add_dependency('thin', '< 2.0.0')
   end
 
   # dependencies for various cloud providers:
