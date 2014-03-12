@@ -1,4 +1,7 @@
 ---
 :vcloud:
   :name: vCloud
+<<<<<<< HEAD
   :entrypoint: vcloud.povider.com
+=======
+>>>>>>> origin/deltacloud-core-dev

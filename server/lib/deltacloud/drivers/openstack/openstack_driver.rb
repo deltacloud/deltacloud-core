@@ -1,20 +1,21 @@
 # Licensed to the Apache Software Foundation (ASF) under one or more
-# contributor license agreements.  See the NOTICE file distributed with
-# this work for additional information regarding copyright ownership.  The
+# contributor license agreements. See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership. The
 # ASF licenses this file to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance with the
-# License.  You may obtain a copy of the License at
+# License. You may obtain a copy of the License at
 #
-#       http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
 #
 
 require 'openstack'
+require 'tempfile'
 
 module Deltacloud
   module Drivers
@@ -32,12 +33,15 @@ module Deltacloud
         feature :storage_volumes, :volume_description
 
         define_instance_states do
-          start.to( :pending )          .on( :create )
-          pending.to( :running )        .automatically
-          running.to( :running )        .on( :reboot )
-          running.to( :stopping )       .on( :stop )
-          stopping.to( :stopped )       .automatically
-          stopped.to( :finish )         .automatically
+          start.to( :pending ) .on( :create )
+          pending.to( :running ) .automatically
+          running.to( :running ) .on( :reboot )
+          running.to( :stopping ) .on( :stop )
+          running.to(:finish) .on( :destroy )
+          stopping.to( :stopped ) .automatically
+          stopped.to( :finish ) .on( :destroy )
+          stopped.to( :running ) .on ( :start )
+          error.to( :finish) .on( :destroy )
           error.from(:running, :pending, :stopping)
         end
 
@@ -145,10 +149,10 @@ module Deltacloud
           limits = ""
           safely do
             lim = os.limits
-              limits << "ABSOLUTE >> Max. Instances: #{lim[:absolute][:maxTotalInstances]} Max. RAM: #{lim[:absolute][:maxTotalRAMSize]}   ||   "
+              limits << "ABSOLUTE >> Max. Instances: #{lim[:absolute][:maxTotalInstances]} Max. RAM: #{lim[:absolute][:maxTotalRAMSize]} || "
               lim[:rate].each do |rate|
                 if rate[:regex] =~ /servers/
-                  limits << "SERVERS >> Total: #{rate[:limit].first[:value]}  Remaining: #{rate[:limit].first[:remaining]} Time Unit: per #{rate[:limit].first[:unit]}"
+                  limits << "SERVERS >> Total: #{rate[:limit].first[:value]} Remaining: #{rate[:limit].first[:remaining]} Time Unit: per #{rate[:limit].first[:unit]}"
                 end
               end
           end
@@ -161,38 +165,24 @@ module Deltacloud
 
         def instances(credentials, opts={})
           os = new_client(credentials)
-          insts = attachments = nics = []
+          insts = attachments = []
           safely do
-            if have_quantum?(credentials)
-              nics = network_interfaces(credentials)
-            end
             if opts[:id]
               begin
                 server = os.get_server(opts[:id])
-                inst_nics = nics.inject([]){|res, cur| res << cur.id if cur.instance == opts[:id]  ;res}
-                insts << convert_from_server(server, os.connection.authuser, get_attachments(opts[:id], os), inst_nics)
+                insts << convert_from_server(server, os.connection.authuser, get_attachments(opts[:id], os))
               rescue => e
                 raise e unless e.message =~ /The resource could not be found/
                 insts = []
               end
             else
               insts = os.list_servers_detail.collect do |s|
-                inst_nics = nics.inject([]){|res, cur| res << cur.id if cur.instance == s[:id]  ;res}
-                convert_from_server(s, os.connection.authuser,get_attachments(s[:id], os), inst_nics)
+                convert_from_server(s, os.connection.authuser,get_attachments(s[:id], os))
               end
             end
           end
           insts = filter_on( insts, :state, opts )
           insts
-        end
-
-        def have_quantum?(credentials)
-          begin
-            quantum = new_client(credentials, "network")
-          rescue => e
-            return nil
-          end
-          quantum
         end
 
         def create_instance(credentials, image_id, opts)
@@ -203,7 +193,7 @@ module Deltacloud
           params[:personality] = extract_personality(opts)
           params[:name] = (opts[:name] && opts[:name].length>0)? opts[:name] : "server#{Time.now.to_s}"
           params[:imageRef] = image_id
-          params[:flavorRef] =  (opts[:hwp_id] && opts[:hwp_id].length>0) ?
+          params[:flavorRef] = (opts[:hwp_id] && opts[:hwp_id].length>0) ?
                           opts[:hwp_id] : hardware_profiles(credentials).first.id
           if opts[:password] && opts[:password].length > 0
             params[:adminPass]=opts[:password]
@@ -248,7 +238,23 @@ module Deltacloud
           instance
         end
 
-        alias_method :stop_instance, :destroy_instance
+        #alias_method :stop_instance, :destroy_instance
+
+        def stop_instance(credentials, instance_id)
+          os = new_client(credentials)
+          safely do
+            server = os.get_server(instance_id)
+            server.stop
+          end
+        end
+        
+        def start_instance(credentials, instance_id)
+          os = new_client(credentials)
+          safely do
+            server = os.get_server(instance_id)
+            server.start
+          end
+        end
 
         def buckets(credentials, opts={})
           os = new_client(credentials, "object-store")
@@ -405,7 +411,7 @@ module Deltacloud
           volumes = []
           safely do
             if opts[:id]
-              volumes <<  convert_volume(vs.get_volume(opts[:id]))
+              volumes << convert_volume(vs.get_volume(opts[:id]))
             else
               vs.volumes.each do |vol|
                 volumes << convert_volume(vol)
@@ -459,7 +465,7 @@ module Deltacloud
           snapshots = []
           safely do
             if opts[:id]
-              snapshots <<  convert_snapshot(vs.get_snapshot(opts[:id]))
+              snapshots << convert_snapshot(vs.get_snapshot(opts[:id]))
             else
               vs.snapshots.each do |snap|
                 snapshots << convert_snapshot(snap)
@@ -486,124 +492,6 @@ module Deltacloud
           end
         end
 
-        def networks(credentials, opts={})
-          os = new_client(credentials, "network")
-          networks = []
-          safely do
-            subnets = os.subnets
-            if opts[:id]
-              begin
-                net = os.network(opts[:id])
-                addr_blocks = get_address_blocks_for(net.id, subnets)
-                networks << convert_network(net, addr_blocks)
-              rescue => e
-                raise e unless e.message =~ /Network not found/
-                networks = []
-              end
-            else
-              os.networks.each do |net|
-                addr_blocks = get_address_blocks_for(net.id, subnets)
-                networks << convert_network(net, addr_blocks)
-              end
-            end
-          end
-          networks = filter_on(networks, :id, opts)
-        end
-
-        #require params for openstack: {:name}
-        def create_network(credentials, opts={})
-          os = new_client(credentials, "network")
-          safely do
-            net = os.create_network(opts[:name] || "net_#{Time.now.to_i}")
-            convert_network(net)
-          end
-        end
-
-        def destroy_network(credentials, id)
-          os = new_client(credentials, "network")
-          safely do
-            os.delete_network(id)
-          end
-        end
-
-        def subnets(credentials, opts={})
-          os = new_client(credentials, "network")
-          subnets = []
-          safely do
-            if opts[:id]
-              begin
-                snet = os.subnet opts[:id]
-                subnets << convert_subnet(snet)
-              rescue => e
-                raise e unless e.message =~ /Subnet not found/
-                subnets = []
-              end
-            else
-              os.subnets.each do |subnet|
-                subnets << convert_subnet(subnet)
-              end
-            end
-          end
-          subnets = filter_on(subnets, :id, opts)
-        end
-
-        #required params:  :network_id, cidr_block
-        #optional params:  :ip_version, :gateway_ip, :allocation_pools
-        def create_subnet(credentials, opts={})
-          os = new_client(credentials, "network")
-          safely do
-            convert_subnet(os.create_subnet(opts[:network_id], opts[:address_block]))
-          end
-        end
-
-        def destroy_subnet(credentials, subnet_id)
-          os = new_client(credentials, "network")
-          safely do
-            os.delete_subnet(subnet_id)
-          end
-        end
-
-        def network_interfaces(credentials, opts={})
-          os = new_client(credentials, "network")
-          nics = []
-          safely do
-            if opts[:id]
-              begin
-                nic = os.port(opts[:id])
-                nics << convert_nic(nic)
-              rescue => e
-                raise e unless e.message =~ /Port not found/
-                nics = []
-              end
-            else
-              os.ports.each do |port|
-                nics << convert_nic(port)
-              end
-            end
-          end
-          nics = filter_on(nics, :id, opts)
-        end
-
-        def create_network_interface(credentials, opts={})
-          quantum = new_client(credentials, "network")
-          safely do
-            #first discover the network for the supplied subnet
-            #i.e. opts[:network] is actually a subnet
-            snet = quantum.subnet(opts[:network])
-            network = snet.network_id
-            name = opts[:name] || "nic_#{Time.now.to_i}"
-            port = quantum.create_port(network, {"fixed_ips"=>[{"subnet_id"=>opts[:network]}], "device_id"=>opts[:instance], "name"=>name})
-            convert_nic(port)
-          end
-        end
-
-        def destroy_network_interface(credentials, nic_id)
-          os = new_client(credentials, "network")
-          safely do
-            os.delete_port(nic_id)
-          end
-        end
-
 private
         #for v2 authentication credentials.name == "username+tenant_name"
         def new_client(credentials, type="compute", ignore_provider=false)
@@ -626,7 +514,7 @@ private
           connection_params.merge!({:region => region}) if region && !ignore_provider # hack needed for 'def providers'
           safely do
             raise ValidationFailure.new(Exception.new("Error: tried to initialise Openstack connection using" +
-                    " an unknown service_type: #{type}")) unless ["volume", "compute", "object-store", "network"].include? type
+                    " an unknown service_type: #{type}")) unless ["volume", "compute", "object-store"].include? type
             OpenStack::Connection.create(connection_params)
            end
         end
@@ -660,16 +548,16 @@ private
                     })
         end
 
-        def convert_from_server(server, owner, attachments=[], nics=[])
+        def convert_from_server(server, owner, attachments=[])
           op = (server.class == Hash)? :fetch : :send
           image = server.send(op, :image)
           flavor = server.send(op, :flavor)
-         begin
+          begin
             password = server.send(op, :adminPass) || ""
             rescue IndexError
               password = ""
           end
-          inst_params = {
+          inst = Instance.new(
             :id => server.send(op, :id).to_s,
             :realm_id => "default",
             :owner_id => owner,
@@ -686,11 +574,7 @@ private
             :keyname => server.send(op, :key_name),
             :launch_time => server.send(op, :created),
             :storage_volumes => attachments.inject([]){|res, cur| res << {cur[:volumeId] => cur[:device]} ;res}
-          }
-          unless nics.empty?
-            inst_params.merge!(:network_interfaces=>nics)
-          end
-          inst = Instance.new(inst_params)
+          )
           inst.actions = instance_actions_for(inst.state)
           inst.create_image = 'RUNNING'.eql?(inst.state)
           inst
@@ -710,6 +594,8 @@ private
               "ERROR"
             when /active/
               "RUNNING"
+            when /suspended/
+              "STOPPED"
             else
               "UNKNOWN"
           end
@@ -732,7 +618,7 @@ private
 
         def convert_blob(blob, bucket_name)
           op, blob_meta = (blob.class == Hash)? [:fetch, {}] : [:send, blob.metadata]
-          Blob.new({   :id => blob.send(op, :name),
+          Blob.new({ :id => blob.send(op, :name),
                        :bucket => bucket_name,
                        :content_length => blob.send(op, :bytes),
                        :content_type => blob.send(op, :content_type),
@@ -791,50 +677,10 @@ private
           )
         end
 
-        def get_address_blocks_for(network_id, subnets)
-          return [] if subnets.empty?
-          addr_blocks = []
-          subnets.each do |sn|
-            if sn.network_id == network_id
-              addr_blocks << sn.cidr
-            end
-          end
-          addr_blocks
-        end
-
-        def convert_network(net, addr_blocks)
-          Network.new({ :id => net.id,
-                        :name => net.name,
-                        :subnets => net.subnets,
-                        :state => (net.admin_state_up ? "UP" : "DOWN"),
-                        :address_blocks => addr_blocks
-          })
-        end
-
-        def convert_subnet(subnet)
-          Subnet.new({  :id => subnet.id,
-                        :name => subnet.name,
-                        :network => subnet.network_id,
-                        :address_block => subnet.cidr,
-                        :state => "UP"
-          })
-        end
-
-        def convert_nic(port)
-          NetworkInterface.new({  :id => port.id,
-                      :name => port.name,
-                      :instance => port.device_id,
-                      :network => port.fixed_ips.first["subnet_id"], #subnet, not network for OS
-                      :state => (port.admin_state_up ? "UP" : "DOWN" ), # true/false
-                      :ip_address =>port.fixed_ips.first["ip_address"]
-                      # this is a structure; [{"subnet_id": ID, "ip_address": addr}] - COULD BE >1 address here...
-          })
-        end
-
         #IN: path1='server_path1'. content1='contents1', path2='server_path2', content2='contents2' etc
         #OUT:{local_path=>server_path, local_path1=>server_path2 etc}
         def extract_personality(opts)
-          personality_hash =  opts.inject({}) do |result, (opt_k,opt_v)|
+          personality_hash = opts.inject({}) do |result, (opt_k,opt_v)|
             if (opt_k.to_s =~ /^path([1-5]+)/ and opts[opt_k] != nil and opts[opt_k].length > 0)
               unless opts[:"content#{$1}"].nil?
                 case opts[:"content#{$1}"]
