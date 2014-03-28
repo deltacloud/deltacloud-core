@@ -557,7 +557,7 @@ class VcloudDriver < Deltacloud::BaseDriver
   end
 
   def reboot_instance(credentials, id)
-    #get_vapp(credentials, id).rebootl
+    get_vapp(credentials, id).reboot
   end
 
   def start_instance(credentials, id)
