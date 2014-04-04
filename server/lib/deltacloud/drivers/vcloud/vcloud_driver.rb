@@ -11,9 +11,9 @@ class VcloudDriver < Deltacloud::BaseDriver
   feature :instances, :user_name do
     { :max_length => 50 }
   end
-  
+
   define_hardware_profile('default')
-  
+
   def hardware_profiles(credentials, opts = {})
     # TODO: Instead of hard-coding the hardware profile values, they should be kept in some external location (like file or some service), and read from there
     @hardware_profiles = []
@@ -47,7 +47,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           cpu 6
           memory 16384
         end
-        #storage - not supported 
+        #storage - not supported
         architecture 'x86_64'
       end
       hwp.name = profile_name
@@ -55,7 +55,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
     filter_hardware_profiles(@hardware_profiles, opts)
   end
-  
+
   # For keeping record of "privately pending" instances.
   # i.e. instances, that have been created, but that still need some initialization work
   # that is done in our thread.
@@ -94,7 +94,7 @@ class VcloudDriver < Deltacloud::BaseDriver
         "PENDING"
     end
   end
-  
+
   # Object Creation Status (vcd_51_api_guide.pdf, p. 311)
   # Applies to vAppTemplate, vApp, Vm, Media
   # TODO: Move to fog
@@ -157,7 +157,7 @@ class VcloudDriver < Deltacloud::BaseDriver
           else
             status = convert_state(vm.status)
           end
-          
+
           # Find out if we have own unfinished initialization for the instance ongoing in thread (even if status would be STOPPED)
           @@pendingInstancesMutex.synchronize {
             if @@pendingInstances[vapp.id]
@@ -175,7 +175,7 @@ class VcloudDriver < Deltacloud::BaseDriver
               profile_name = profiles.first.id.to_s
             end
           end
-          
+
           profile = InstanceProfile.new(profile_name)
           if status != "PENDING" and status != "ERROR" then
             profile.cpu = vm.cpu
@@ -185,7 +185,7 @@ class VcloudDriver < Deltacloud::BaseDriver
             # TODO: Why disks are not always loaded? vm.reload does not help
             if disks.instance_of?(Array) then
               total_storage = disks.inject(0) {|s, i| s + i.values.reduce(:+)}
-            end  
+            end
             profile.storage = total_storage / 1024
           end
           private_addresses = []
@@ -199,6 +199,11 @@ class VcloudDriver < Deltacloud::BaseDriver
             :private_addresses => private_addresses,
             :instance_profile => profile
           )
+          class << inst
+            attr_accessor :_vapp, :_vm
+          end
+          inst._vapp = vapp
+          inst._vm = vm
           inst.actions = instance_actions_for(inst.state)
           instances << inst
         end
@@ -237,12 +242,12 @@ class VcloudDriver < Deltacloud::BaseDriver
       end
     end
     for instance in instances
-      vapp = org.vdcs.first.vapps.select { |v| v.id == instance.id }[0]
+      vapp = instance._vapp
       if not vapp
         Fog::Logger.warning("update_img_profile_info: no vapp")
         next
       end
-      vm = vapp.vms.first
+      vm  = instance._vm
       if not vm
         Fog::Logger.warning("update_img_profile_info: no vm for vapp: " + vapp.id)
         next
@@ -255,7 +260,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
     return instances
   end
-	
+
   def images(credentials, opts=nil)
       images = []
       vcloud = new_client(credentials)
@@ -345,7 +350,6 @@ class VcloudDriver < Deltacloud::BaseDriver
             :state => convert_creation_status(resp.body[:status]),
             :instance_profile => InstanceProfile.new("default")
           )
-    
     #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
     if cpu_value >= 1 or memory_value >= 1 or script != "" or network_name != "" or computer_name != ""
       @@pendingInstancesMutex.synchronize {
@@ -428,7 +432,7 @@ class VcloudDriver < Deltacloud::BaseDriver
         @@pendingInstances.delete(inst.id)
       }
     end
-    
+
     inst.actions = instance_actions_for(inst.state)
     inst
   end
@@ -499,7 +503,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
     Fog::Logger.warning("ISO transport done")
   end
-  
+
   def extract_ps_items(body)
     items = []
     if body
@@ -605,7 +609,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     else
       if vapp.deployed then
         vapp.undeploy
-      end    
+      end
       vapp.reload
       Fog::Logger.warning("Delete vapp: " + vapp.id)
       vapp.destroy()
@@ -613,10 +617,31 @@ class VcloudDriver < Deltacloud::BaseDriver
   end
 
   #alias_method :stop_instance, :destroy_instance
-  
+
   def addresses(credentials, opts={})
     vcloud = new_client(credentials)
     [] 
+
+  def keys(credentials, opts={})
+    keys = []
+    keys << Key.new(
+      :id => opts[:key_name],
+      :credential_type => :key,
+      :state => "AVAILABLE"
+    )
+    filter_on(keys, :id, opts)
+  end
+
+  def create_key(credentials, opts={})
+    Key.new(
+      :id => opts[:key_name],
+      :credential_type => :key,
+      :state => "AVAILABLE"
+    )
+  end
+
+  def destroy_key(credentials, opts={})
+    puts "destroykey"
   end
 
  private
@@ -644,7 +669,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     Fog::Logger.warning connection
     connection
   end
-  
+
  private
   def select_organization(orgs, credentials)
     org = orgs.first
@@ -658,13 +683,13 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
     org
   end
-  
+
   exceptions do
     on /AuthFailure/ do
       status 401
     end
   end
-  
+
 end
     end
   end
