@@ -99,7 +99,7 @@ class OpennebulaDriver < Deltacloud::BaseDriver
 
   def destroy_image(credentials, id)
     occi_client = new_client(credentials)
-    treat_response(occi_client.delete_image(opts[:id]))
+    treat_response(occi_client.delete_image(id))
   end
 
   ######################################################################
