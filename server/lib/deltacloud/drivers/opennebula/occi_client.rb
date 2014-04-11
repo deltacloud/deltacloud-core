@@ -296,7 +296,7 @@ module OCCIClient
       do_request(url, req)
     end
 
-    def delete(path, xmlfile)
+    def delete(path, xmlfile=nil)
       url = URI.parse(@endpoint+path)
       req = Net::HTTP::Delete.new(url.path)
 
