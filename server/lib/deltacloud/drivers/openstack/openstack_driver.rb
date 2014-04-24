@@ -631,7 +631,7 @@ private
                               :created => vol.created_at,
                               :state => (vol.attachments.inject([]){|res, cur| res << cur if cur.size > 0 ; res}.empty?) ? "AVAILABLE" : "IN-USE",
                               :capacity => vol.size,
-                              :instance_id => (vol.attachments.first["serverId"] unless vol.attachments.empty?),
+                              :instance_id => (vol.attachments.first["server_id"] unless vol.attachments.empty?),
                               :device => (vol.attachments.first["device"] unless vol.attachments.empty?),
                               :realm_id => vol.availability_zone,
                               :description => vol.display_description # openstack volumes have a display_description attr
