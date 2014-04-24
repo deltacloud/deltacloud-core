@@ -77,29 +77,11 @@ class VcloudDriver < Deltacloud::BaseDriver
     filter_hardware_profiles(@hardware_profiles, opts)
   end
 
-  def images(credentials, opts=nil)
-      images = []
-      vcloud = new_client(credentials)
-      orgs = vcloud.organizations
-      org = select_organization(orgs, credentials)
-      org.catalogs.each do |cat|
-        cat.catalog_items.each do |item|
-          vapp_template_id = item.vapp_template_id
-          vapp_template = vcloud.get_vapp_template(vapp_template_id)
-          images << Image.new(
-              :id => vapp_template_id,
-              :name => item.name,
-              :state => convert_creation_status(vapp_template.body[:status]),
-              :architecture => "",
-              :hardware_profiles => hardware_profiles(nil),
-              :description => item.name
-          )
-          Fog::Logger.warning "Image. vappt=" + item.id
-        end
-      end
-      images = filter_on( images, :id, opts )
-      images
-  end
+  # For keeping record of "privately pending" instances.
+  # i.e. instances, that have been created, but that still need some initialization work
+  # that is done in our thread.
+  @@pendingInstances = Hash.new
+  @@pendingInstancesMutex = Mutex.new
 
   def realms(credentials, opts=nil)
      vcloud = new_client(credentials)
@@ -116,81 +98,6 @@ class VcloudDriver < Deltacloud::BaseDriver
          )]
      end
      realms
-  end
-
-  # For keeping record of "privately pending" instances.
-  # i.e. instances, that have been created, but that still need some initialization work
-  # that is done in our thread.
-  @@pendingInstances = Hash.new
-  @@pendingInstancesMutex = Mutex.new
-
-  def instances(credentials, opts=nil)
-      instances = []
-      vcloud = new_client(credentials)
-      safely do
-        orgs = vcloud.organizations
-        org = select_organization(orgs, credentials)
-        created_map = build_ongoing_task_map(org)
-        vdc = org.vdcs.first
-        vdc.vapps.each do |vapp|
-          vm = vapp.vms.first
-          if !vm
-            status = "ERROR"
-            if created_map[vapp.id]
-              status = "PENDING"
-            end
-          else
-            status = convert_state(vm.status)
-          end
-
-          # Find out if we have own unfinished initialization for the instance ongoing in thread (even if status would be STOPPED)
-          @@pendingInstancesMutex.synchronize {
-            if @@pendingInstances[vapp.id]
-              Fog::Logger.warning("Vapp " + vapp.id + " is pending due to initialization thread.")
-              status = "PENDING";
-            end
-          }
-          # Find out profile based on cpu and memory.
-          profile_name = "default"
-          if status != "PENDING" and status != "ERROR" then
-            profiles = hardware_profiles(credentials)
-            profiles = profiles.select { |hwp| hwp.include?(:cpu, vm.cpu) }
-            profiles = profiles.select { |hwp| hwp.include?(:memory, vm.memory) }
-            if profiles.first
-              profile_name = profiles.first.id.to_s
-            end
-          end
-
-          profile = InstanceProfile.new(profile_name)
-          if status != "PENDING" and status != "ERROR" then
-            profile.cpu = vm.cpu
-            profile.memory = vm.memory
-            disks = vm.hard_disks
-            total_storage = 0
-            # TODO: Why disks are not always loaded? vm.reload does not help
-            if disks.instance_of?(Array) then
-              total_storage = disks.inject(0) {|s, i| s + i.values.reduce(:+)}
-            end
-            profile.storage = total_storage / 1024
-          end
-          private_addresses = []
-          if vm then
-            private_addresses = [InstanceAddress.new(vm.ip_address, :type => :ipv4)]
-          end
-          inst = Instance.new(
-            :id => vapp.id,
-            :name => vapp.name,
-            :state => status,
-            :private_addresses => private_addresses,
-            :instance_profile => profile
-          )
-          inst.actions = instance_actions_for(inst.state)
-          instances << inst
-        end
-      end
-      instances = filter_on( instances, :id, opts )
-      instances = update_img_profile_info(vcloud, credentials, instances)
-      instances
   end
 
   def convert_state(state)
@@ -253,6 +160,80 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
   end
 
+  def instances(credentials, opts=nil)
+      instances = []
+      vcloud = new_client(credentials)
+      safely do
+        orgs = vcloud.organizations
+        org = select_organization(orgs, credentials)
+        created_map = build_ongoing_task_map(org)
+        vdc = org.vdcs.first
+        vdc.vapps.each do |vapp|
+          vm = vapp.vms.first
+          if !vm
+            status = "ERROR"
+            if created_map[vapp.id]
+              status = "PENDING"
+            end
+          else
+            status = convert_state(vm.status)
+          end
+
+          # Find out if we have own unfinished initialization for the instance ongoing in thread (even if status would be STOPPED)
+          @@pendingInstancesMutex.synchronize {
+            if @@pendingInstances[vapp.id]
+              Fog::Logger.warning("Vapp " + vapp.id + " is pending due to initialization thread.")
+              status = "PENDING";
+            end
+          }
+          # Find out profile based on cpu and memory.
+          profile_name = "default"
+          if status != "PENDING" and status != "ERROR" then
+            profiles = hardware_profiles(credentials)
+            profiles = profiles.select { |hwp| hwp.include?(:cpu, vm.cpu) }
+            profiles = profiles.select { |hwp| hwp.include?(:memory, vm.memory) }
+            if profiles.first
+              profile_name = profiles.first.id.to_s
+            end
+          end
+
+          profile = InstanceProfile.new(profile_name)
+          if status != "PENDING" and status != "ERROR" then
+            profile.cpu = vm.cpu
+            profile.memory = vm.memory
+            disks = vm.hard_disks
+            total_storage = 0
+            # TODO: Why disks are not always loaded? vm.reload does not help
+            if disks.instance_of?(Array) then
+              total_storage = disks.inject(0) {|s, i| s + i.values.reduce(:+)}
+            end
+            profile.storage = total_storage / 1024
+          end
+          private_addresses = []
+          if vm then
+            private_addresses = [InstanceAddress.new(vm.ip_address, :type => :ipv4)]
+          end
+          inst = Instance.new(
+            :id => vapp.id,
+            :name => vapp.name,
+            :state => status,
+            :private_addresses => private_addresses,
+            :instance_profile => profile
+          )
+          class << inst
+            attr_accessor :_vapp, :_vm
+          end
+          inst._vapp = vapp
+          inst._vm = vm
+          inst.actions = instance_actions_for(inst.state)
+          instances << inst
+        end
+      end
+      instances = filter_on( instances, :id, opts )
+      instances = update_img_profile_info(vcloud, credentials, instances)
+      instances
+  end
+
   def build_ongoing_task_map(org)
     map = {}
     for task in org.tasks()
@@ -282,12 +263,12 @@ class VcloudDriver < Deltacloud::BaseDriver
       end
     end
     for instance in instances
-      vapp = org.vdcs.first.vapps.select { |v| v.id == instance.id }[0]
+      vapp = instance._vapp
       if not vapp
         Fog::Logger.warning("update_img_profile_info: no vapp")
         next
       end
-      vm = vapp.vms.first
+      vm  = instance._vm
       if not vm
         Fog::Logger.warning("update_img_profile_info: no vm for vapp: " + vapp.id)
         next
@@ -299,6 +280,30 @@ class VcloudDriver < Deltacloud::BaseDriver
       instance.image_id = img_map[vm.name]
     end
     return instances
+  end
+
+  def images(credentials, opts=nil)
+      images = []
+      vcloud = new_client(credentials)
+      orgs = vcloud.organizations
+      org = select_organization(orgs, credentials)
+      org.catalogs.each do |cat|
+        cat.catalog_items.each do |item|
+          vapp_template_id = item.vapp_template_id
+          vapp_template = vcloud.get_vapp_template(vapp_template_id)
+          images << Image.new(
+              :id => vapp_template_id,
+              :name => item.name,
+              :state => convert_creation_status(vapp_template.body[:status]),
+              :architecture => "",
+              :hardware_profiles => hardware_profiles(nil),
+              :description => item.name
+          )
+          Fog::Logger.warning "Image. vappt=" + item.id
+        end
+      end
+      images = filter_on( images, :id, opts )
+      images
   end
 
   define_instance_states do
@@ -366,169 +371,91 @@ class VcloudDriver < Deltacloud::BaseDriver
             :state => convert_creation_status(resp.body[:status]),
             :instance_profile => InstanceProfile.new("default")
           )
-
     #wait until vm creation completes in a separate thread, otherwise setting cpu or memory would fail
     if cpu_value >= 1 or memory_value >= 1 or script != "" or network_name != "" or computer_name != ""
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances[inst.id] = true
       }
-      tasks = resp.body[:Tasks]
-      if tasks.respond_to?("keys")
-        vcloud.process_task(tasks[:Task])
-      else
-        for task in tasks
-          vcloud.process_task(task)
+      Thread.new {
+        tasks = resp.body[:Tasks]
+        if tasks.respond_to?("keys")
+          vcloud.process_task(tasks[:Task])
+        else
+          for task in tasks
+            vcloud.process_task(task)
+          end
         end
-      end
-      vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
-      if vapp
-        vm = vapp.vms.first
-        if vm
-          Fog::Logger.warning("VM has been created, finalize it.")
-          # Now we have vm created, and can set values
-          if cpu_value >= 0
-            Fog::Logger.warning("Set CPU value.")
-            vm.cpu = cpu_value
-          end
-          if memory_value >= 1
-            Fog::Logger.warning("Set memory value.")
-            vm.memory = memory_value
-          end
-          if network_name != ""
-            Fog::Logger.warning("Set network: " + network_name)
-            network = vm.network
-            network.network = network_name
-            network.ip_address_allocation_mode="POOL"
-            network.is_connected=true
-            network.save
-          end
-          if script != "" or computer_name != ""
-            Fog::Logger.warning("Set customization.")
-            customization = vm.customization
-            customization.enabled = true
-            customization.script = script
-            customization.has_customization_script = (script != "")
-            customization.computer_name = computer_name
-            if ! customization.admin_password_loaded?
-              customization.admin_password = nil
-            end
-            begin
-              customization.save
-            rescue Exception => e
-              Fog::Logger.warning("Saving customization error: " + e.message)
-            end
-          end
-          process_ovf_metadata(vcloud, org, inst.id, opts)
-          success = true
-        end
-      end
-
-      if success
-        success = false
-        Fog::Logger.warning("Waiting on a thread for vm to be ready to be started...")
-        sleep(1)
         vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
         if vapp
           vm = vapp.vms.first
-          vm_state = convert_state(vm.status)
-          if vm_state == "RUNNING"
-            # vCloud vms don't currently go to running state automatically, but just in case..
-            success = true
-          end
-          if vm_state == "STOPPED"
-            Fog::Logger.warning("VM is ready, start it.")
-            vm.power_on
+          if vm
+            success = false
+            Fog::Logger.warning("VM has been created, finalize it.")
+            # Now we have vm created, and can set values
+            if cpu_value >= 0
+              Fog::Logger.warning("Set CPU value.")
+              vm.cpu = cpu_value
+            end
+            if memory_value >= 1
+              Fog::Logger.warning("Set memory value.")
+              vm.memory = memory_value
+            end
+            if network_name != ""
+              Fog::Logger.warning("Set network: " + network_name)
+              network = vm.network
+              network.network = network_name
+              network.ip_address_allocation_mode="POOL"
+              network.is_connected=true
+              network.save
+            end
+            if script != "" or computer_name != ""
+              Fog::Logger.warning("Set customization.")
+              customization = vm.customization
+              customization.enabled = true
+              customization.script = script
+              customization.has_customization_script = (script != "")
+              customization.computer_name = computer_name
+              if ! customization.admin_password_loaded?
+                customization.admin_password = nil
+              end
+              begin
+                customization.save
+              rescue Exception => e
+                Fog::Logger.warning("Saving customization error: " + e.message)
+              end
+            end
+            process_ovf_metadata(vcloud, org, inst.id, opts)
             success = true
           end
         end
-      end
 
+        if success
+          success = false
+          Fog::Logger.warning("Waiting on a thread for vm to be ready to be started...")
+          sleep(1)
+          vapp = org.vdcs.first.vapps.select { |v| v.id == inst.id }[0]
+          if vapp
+            vm = vapp.vms.first
+            vm_state = convert_state(vm.status)
+            if vm_state == "RUNNING"
+              # vCloud vms don't currently go to running state automatically, but just in case..
+              success = true
+            end
+            if vm_state == "STOPPED"
+              Fog::Logger.warning("VM is ready, start it.")
+              vm.power_on
+              success = true
+            end
+          end
+        end
+      }
       @@pendingInstancesMutex.synchronize {
         @@pendingInstances.delete(inst.id)
       }
-      if !success
-        raise "Error: Could not configure or start VM."
-      end
     end
 
     inst.actions = instance_actions_for(inst.state)
     inst
-  end
-
-  def reboot_instance(credentials, id)
-    #get_vapp(credentials, id).rebootl
-  end
-
-  def start_instance(credentials, id)
-    Fog::Logger.warning "start instance. vapp_id=" + id
-    get_vapp(credentials, id).power_on
-  end
-
-  def stop_instance(credentials, id)
-    get_vapp(credentials, id).power_off
-  end
-
-  def destroy_instance(credentials, id)
-    vcloud = new_client(credentials)
-    orgs = vcloud.organizations
-    org = select_organization(orgs, credentials)
-    vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
-    status = convert_creation_status(vapp.status)
-    if status != "STOPPED"
-      Fog::Logger.warning("Request to destroy running instance, stop it first.")
-      vapp.power_off
-      Thread.new {
-        success = false
-        60.times { # wait at most 60 seconds
-          Fog::Logger.warning("Waiting on a thread for vm to be stopped...")
-          sleep(1)
-          vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
-          if vapp
-            vm = vapp.vms.first
-            if convert_state(vm.status) == "STOPPED"
-              Fog::Logger.warning("VM is stopped, destroy it.")
-              if vapp.deployed then
-                vapp.undeploy
-              end
-              vapp.reload
-              vapp.destroy()
-              success = true
-              break
-            end
-          end
-        }
-        if !success
-          raise "Error: Could not destory VM."
-        end
-      }
-    else
-      if vapp.deployed then
-        vapp.undeploy
-      end
-      vapp.reload
-      Fog::Logger.warning("Delete vapp: " + vapp.id)
-      vapp.destroy()
-    end
-  end
-#
-# PRIVATE METHODS:
-#
-  private
-  def new_client(credentials)
-    # Support also + as separator between username and tenant
-    credentials.user.gsub!('+','@')
-    Fog::Logger.warning credentials
-    connection = Fog::Compute::VcloudDirector.new(
-      :vcloud_director_username => credentials.user,
-      :vcloud_director_password => credentials.password,
-      :vcloud_director_host => api_provider,
-      :connection_options => {
-        :ssl_verify_peer => false,
-        :omit_default_port => true
-      }
-    )
-    Fog::Logger.warning connection
-    connection
   end
 
   def process_ovf_metadata(vcloud, org, instance_id, opts)
@@ -597,7 +524,7 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
     Fog::Logger.warning("ISO transport done")
   end
-  
+
   def extract_ps_items(body)
     items = []
     if body
@@ -654,11 +581,88 @@ class VcloudDriver < Deltacloud::BaseDriver
     return ""
   end
 
+  def reboot_instance(credentials, id)
+    get_vapp(credentials, id).reboot
+  end
+
+  def start_instance(credentials, id)
+    Fog::Logger.warning "start instance. vapp_id=" + id
+    get_vapp(credentials, id).power_on
+  end
+
+  def stop_instance(credentials, id)
+    get_vapp(credentials, id).power_off
+  end
+
+  def destroy_instance(credentials, id)
+    vcloud = new_client(credentials)
+    orgs = vcloud.organizations
+    org = select_organization(orgs, credentials)
+    vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
+    status = convert_creation_status(vapp.status)
+    if status != "STOPPED"
+      Fog::Logger.warning("Request to destroy running instance, stop it first.")
+      vapp.power_off
+      Thread.new {
+        success = false
+        60.times { # wait at most 60 seconds
+          Fog::Logger.warning("Waiting on a thread for vm to be stopped...")
+          sleep(1)
+          vapp = org.vdcs.first.vapps.select { |v| v.id == id }[0]
+          if vapp
+            vm = vapp.vms.first
+            if convert_state(vm.status) == "STOPPED"
+              Fog::Logger.warning("VM is stopped, destroy it.")
+              if vapp.deployed then
+                vapp.undeploy
+              end
+              vapp.reload
+              vapp.destroy()
+              success = true
+              break
+            end
+          end
+        }
+        if !success
+          raise "Error: Could not destory VM."
+        end
+      }
+    else
+      if vapp.deployed then
+        vapp.undeploy
+      end
+      vapp.reload
+      Fog::Logger.warning("Delete vapp: " + vapp.id)
+      vapp.destroy()
+    end
+  end
+
   #alias_method :stop_instance, :destroy_instance
-  
+
   def addresses(credentials, opts={})
     vcloud = new_client(credentials)
     [] 
+
+  def keys(credentials, opts={})
+    keys = []
+    keys << Key.new(
+      :id => opts[:key_name],
+      :credential_type => :key,
+      :state => "AVAILABLE"
+    )
+    filter_on(keys, :id, opts)
+  end
+
+  def create_key(credentials, opts={})
+    Key.new(
+      :id => opts[:key_name],
+      :credential_type => :key,
+      :state => "AVAILABLE"
+    )
+  end
+
+  def destroy_key(credentials, opts={})
+    puts "destroykey"
   end
 
  private
@@ -667,6 +671,24 @@ class VcloudDriver < Deltacloud::BaseDriver
     orgs = vcloud.organizations
     org = select_organization(orgs, credentials)
     org.vdcs.first.vapps.select { |v| v.id == vapp_id }[0]
+  end
+
+ private
+  def new_client(credentials)
+    # Support also + as separator between username and tenant
+    credentials.user.gsub!('+','@')
+    Fog::Logger.warning credentials
+    connection = Fog::Compute::VcloudDirector.new(
+      :vcloud_director_username => credentials.user,
+      :vcloud_director_password => credentials.password,
+      :vcloud_director_host => api_provider,
+      :connection_options => {
+        :ssl_verify_peer => false,
+        :omit_default_port => true
+      }
+    )
+    Fog::Logger.warning connection
+    connection
   end
 
  private
@@ -682,14 +704,14 @@ class VcloudDriver < Deltacloud::BaseDriver
     end
     org
   end
-  
+
   exceptions do
     on /AuthFailure/ do
       status 401
     end
   end
-end
 
+end
     end
   end
 end
