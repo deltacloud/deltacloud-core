@@ -641,7 +641,8 @@ class VcloudDriver < Deltacloud::BaseDriver
 
   def addresses(credentials, opts={})
     vcloud = new_client(credentials)
-    [] 
+    []
+  end 
 
   def keys(credentials, opts={})
     keys = []
