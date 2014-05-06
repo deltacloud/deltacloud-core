@@ -56,7 +56,7 @@ module Deltacloud::Collections
       action :attach, :with_capability => :attach_storage_volume do
         param :id, :string, :required
         param :instance_id,:string,  :required
-        param :device,     :string,  :required
+        param :device,     :string,  :optional
         control do
           @storage_volume = driver.attach_storage_volume(credentials, params)
           status 202
