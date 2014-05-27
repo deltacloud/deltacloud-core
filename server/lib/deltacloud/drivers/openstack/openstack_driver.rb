@@ -646,10 +646,14 @@ private
         end
 
         def convert_volume(vol)
+          state = (vol.attachments.inject([]){|res, cur| res << cur if cur.size > 0 ; res}.empty?) ? "AVAILABLE" : "IN-USE"
+          if vol.status
+            state = vol.status.upcase
+          end
           StorageVolume.new({ :id => vol.id,
                               :name => vol.display_name,
                               :created => vol.created_at,
-                              :state => (vol.attachments.inject([]){|res, cur| res << cur if cur.size > 0 ; res}.empty?) ? "AVAILABLE" : "IN-USE",
+                              :state => state,
                               :capacity => vol.size,
                               :instance_id => (vol.attachments.first["server_id"] unless vol.attachments.empty?),
                               :device => (vol.attachments.first["device"] unless vol.attachments.empty?),
