@@ -609,6 +609,7 @@ private
         def convert_key(key)
           Key.new(
             :id => key[:name],
+            :name => key[:name],
             :fingerprint => key[:fingerprint],
             :credential_type => :key,
             :pem_rsa_key => key[:private_key], # only available once, on create_key
