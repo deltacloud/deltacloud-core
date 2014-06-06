@@ -16,6 +16,8 @@
 
 require 'openstack'
 require 'tempfile'
+require 'base64'
+require 'json'
 
 module Deltacloud
   module Drivers
@@ -201,6 +203,9 @@ module Deltacloud
           end
           if opts[:user_data] && opts[:user_data].length > 0
             params[:user_data]=opts[:user_data]
+          end
+          if opts[:metadata] && opts[:metadata].length > 0
+            params[:metadata]=JSON.parse(Base64.decode64(opts[:metadata]))
           end
           safely do
             server = os.create_server(params)
