@@ -578,11 +578,27 @@ private
             :password => password,
             :keyname => server.send(op, :key_name),
             :launch_time => server.send(op, :created),
-            :storage_volumes => attachments.inject([]){|res, cur| res << {cur[:volumeId] => cur[:device]} ;res}
+            :storage_volumes => attachments.inject([]){|res, cur| res << {cur[:volumeId] => cur[:device]} ;res},
+            :metadata => convert_instance_metadata(server.send(op, :metadata))
           )
           inst.actions = instance_actions_for(inst.state)
           inst.create_image = 'RUNNING'.eql?(inst.state)
+Fog::Logger.warning(inst.metadata)
           inst
+        end
+
+        def convert_instance_metadata(metadata)
+          imd = {}
+          if metadata.class == Hash
+            metadata.keys.each do |k|
+             imd[k] = metadata[k]
+            end
+          else
+            metadata.each_pair { |k, v|
+              imd[k] = v
+            }
+          end
+          InstanceMetadata.new(imd)
         end
 
         def convert_instance_state(openstack_state)
@@ -746,8 +762,6 @@ private
           end
 
         end
-
-
       end
     end
   end
