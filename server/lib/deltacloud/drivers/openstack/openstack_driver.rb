@@ -252,7 +252,7 @@ module Deltacloud
             server.stop
           end
         end
-        
+
         def start_instance(credentials, instance_id)
           os = new_client(credentials)
           safely do
@@ -578,6 +578,7 @@ private
             :password => password,
             :keyname => server.send(op, :key_name),
             :launch_time => server.send(op, :created),
+            :metadata => convert_instance_metadata(server.send(op, :metadata)),
             :storage_volumes => attachments.inject([]){|res, cur| res << {cur[:volumeId] => cur[:device]} ;res}
           )
           inst.actions = instance_actions_for(inst.state)
@@ -587,16 +588,18 @@ private
 
         def convert_instance_metadata(metadata)
           imd = {}
-          if metadata.class == Hash
-            metadata.keys.each do |k|
-             imd[k] = metadata[k]
+          if metadata
+            if metadata.class == Hash
+              metadata.keys.each do |k|
+               imd[k] = metadata[k]
+              end
+            else
+              metadata.each_pair { |k, v|
+                imd[k] = v
+              }
             end
-          else
-            metadata.each_pair { |k, v|
-              imd[k] = v
-            }
           end
-          InstanceMetadata.new(imd)
+          Deltacloud::InstanceMetadata.new(imd)
         end
 
         def convert_instance_state(openstack_state)
