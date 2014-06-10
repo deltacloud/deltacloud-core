@@ -565,7 +565,6 @@ private
           )
           inst.actions = instance_actions_for(inst.state)
           inst.create_image = 'RUNNING'.eql?(inst.state)
-Fog::Logger.warning(inst.metadata)
           inst
         end
 

@@ -60,8 +60,7 @@ module Deltacloud
           :properties => instance_profile.overrides
         },
         :public_addresses => public_addresses.map { |addr| addr.to_hash(context) },
-        :private_addresses => private_addresses.map { |addr| addr.to_hash(context) },
-        :metadata => metadata.to_hash(context)
+        :private_addresses => private_addresses.map { |addr| addr.to_hash(context) }
       }
       if context.driver.respond_to? :run_on_instance
         r[:actions] << { :href => "#{context.run_instance_url(self.id)};id=#{self.id}", :rel => 'run', :method => 'post'}
