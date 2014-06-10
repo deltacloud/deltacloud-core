@@ -241,7 +241,23 @@ module Deltacloud
           instance
         end
 
-        alias_method :stop_instance, :destroy_instance
+        #alias_method :stop_instance, :destroy_instance
+
+        def stop_instance(credentials, instance_id)
+          os = new_client(credentials)
+          safely do
+            server = os.get_server(instance_id)
+            server.stop
+          end
+        end
+
+        def start_instance(credentials, instance_id)
+          os = new_client(credentials)
+          safely do
+            server = os.get_server(instance_id)
+            server.start
+          end
+        end
 
         def buckets(credentials, opts={})
           os = new_client(credentials, "object-store")
@@ -560,6 +576,7 @@ private
             :password => password,
             :keyname => server.send(op, :key_name),
             :launch_time => server.send(op, :created),
+            :metadata => convert_instance_metadata(server.send(op, :metadata)),
             :storage_volumes => attachments.inject([]){|res, cur| res << {cur[:volumeId] => cur[:device]} ;res}
           )
           inst.actions = instance_actions_for(inst.state)
@@ -569,16 +586,18 @@ private
 
         def convert_instance_metadata(metadata)
           imd = {}
-          if metadata.class == Hash
-            metadata.keys.each do |k|
-             imd[k] = metadata[k]
+          if metadata
+            if metadata.class == Hash
+              metadata.keys.each do |k|
+               imd[k] = metadata[k]
+              end
+            else
+              metadata.each_pair { |k, v|
+                imd[k] = v
+              }
             end
-          else
-            metadata.each_pair { |k, v|
-              imd[k] = v
-            }
           end
-          InstanceMetadata.new(imd)
+          Deltacloud::InstanceMetadata.new(imd)
         end
 
         def convert_instance_state(openstack_state)
