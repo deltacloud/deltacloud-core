@@ -560,8 +560,7 @@ private
             :password => password,
             :keyname => server.send(op, :key_name),
             :launch_time => server.send(op, :created),
-            :storage_volumes => attachments.inject([]){|res, cur| res << {cur[:volumeId] => cur[:device]} ;res},
-            :metadata => convert_instance_metadata(server.send(op, :metadata))
+            :storage_volumes => attachments.inject([]){|res, cur| res << {cur[:volumeId] => cur[:device]} ;res}
           )
           inst.actions = instance_actions_for(inst.state)
           inst.create_image = 'RUNNING'.eql?(inst.state)
