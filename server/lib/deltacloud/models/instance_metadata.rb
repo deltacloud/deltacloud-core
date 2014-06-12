@@ -50,6 +50,11 @@ module Deltacloud
     end
 
     def to_s
+      return @metadata.to_s
+    end
+
+    def to_json
+      return @metadata.to_json
     end
 
     def to_hash(context=nil)

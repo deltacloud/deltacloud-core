@@ -61,3 +61,6 @@
     %network_interfaces<
       - instance.network_interfaces.each do |nic|
         %network_interface{:href => network_interface_url(nic), :id => nic}
+  - if instance.metadata and instance.metadata.size > 0
+    %metadata
+      = instance.metadata.to_json
