@@ -207,7 +207,12 @@ module Deltacloud
             params[:user_data]=opts[:user_data]
           end
           if opts[:metadata] && opts[:metadata].length > 0
-            params[:metadata]=JSON.parse(Base64.decode64(opts[:metadata]))
+            begin
+              params[:metadata]=JSON.parse(Base64.decode64(opts[:metadata]), :max_nesting =>1)
+            rescue Exception => e
+              Fog::Logger.warning(e)
+              raise ValidationFailure.new(Exception.new("Metadata parse error"))
+            end
           end
           safely do
             server = os.create_server(params)
