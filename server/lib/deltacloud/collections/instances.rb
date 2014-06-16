@@ -108,6 +108,13 @@ module Deltacloud::Collections
         control { instance_action(:stop) }
       end
 
+      operation :metadata, :http_method => :post, :with_capability => :update_instance_metadata do
+        description "Update metadata."
+        control do
+          driver.update_instance_metadata(credentials, params)
+        end
+      end
+
       operation :destroy, :with_capability => :destroy_instance do
         control { instance_action(:destroy) }
       end

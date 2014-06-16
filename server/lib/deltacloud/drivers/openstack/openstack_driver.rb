@@ -208,7 +208,6 @@ module Deltacloud
             begin
               params[:metadata]=JSON.parse(Base64.decode64(opts[:metadata]), :max_nesting =>1)
             rescue Exception => e
-              Fog::Logger.warning(e)
               raise ValidationFailure.new(Exception.new("Metadata parse error"))
             end
           end
@@ -498,6 +497,27 @@ module Deltacloud
           safely do
             vs.delete_snapshot(opts[:id])
           end
+        end
+
+        def update_instance_metadata(credentials, opts={})
+          os = new_client(credentials)
+          server = os.get_server(opts[:id])
+          if server
+            meta = nil
+            if opts[:metadata] && opts[:metadata].length > 0
+              begin
+                meta=JSON.parse(Base64.decode64(opts[:metadata]), :max_nesting =>1)
+              rescue Exception => e
+                raise ValidationFailure.new(Exception.new("Metadata parse error"))
+              end
+            end
+            server.metadata.clear
+            meta.each_pair { |k, v|
+              server.metadata.store(k, v)
+            }
+            server.metadata.save
+          end
+          []
         end
 
 private
