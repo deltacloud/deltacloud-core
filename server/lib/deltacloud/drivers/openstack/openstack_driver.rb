@@ -207,11 +207,7 @@ module Deltacloud
             params[:user_data]=opts[:user_data]
           end
           if opts[:metadata] && opts[:metadata].length > 0
-            begin
-              params[:metadata]=JSON.parse(Base64.decode64(opts[:metadata]), :max_nesting =>1)
-            rescue Exception => e
-              raise ValidationFailure.new(Exception.new("Metadata parse error"))
-            end
+            params[:metadata] = meta_json_parse(opts[:metadata])
           end
           safely do
             server = os.create_server(params)
@@ -505,24 +501,40 @@ module Deltacloud
           os = new_client(credentials)
           server = os.get_server(opts[:id])
           if server
-            meta = nil
             if opts[:metadata] && opts[:metadata].length > 0
-              begin
-                meta=JSON.parse(Base64.decode64(opts[:metadata]), :max_nesting =>1)
-              rescue Exception => e
-                raise ValidationFailure.new(Exception.new("Metadata parse error"))
-              end
+              update_instance_metadata_full(server, opts[:metadata])
             end
-            server.metadata.clear
-            meta.each_pair { |k, v|
-              server.metadata.store(k, v)
-            }
-            server.metadata.save
+            if opts[:metakey]
+              update_instance_metadata_key(server, opts[:metakey], opts[:metavalue])
+            end
           end
           []
         end
 
 private
+        def update_instance_metadata_key(server, metakey, metavalue)
+          metavalue = Base64.decode64(metavalue)
+          server.metadata.store(metakey, metavalue)
+          server.metadata.save
+        end
+
+        def update_instance_metadata_full(server, meta)
+          meta = meta_json_parse(meta)
+          server.metadata.clear
+          meta.each_pair { |k, v|
+           server.metadata.store(k, v)
+          }
+          server.metadata.save
+        end
+
+        def meta_json_parse(data)
+          begin
+            JSON.parse(Base64.decode64(data), :max_nesting =>1)
+          rescue Exception => e
+            raise ValidationFailure.new(Exception.new("Metadata parse error"))
+          end
+        end
+
         #for v2 authentication credentials.name == "username+tenant_name"
         def new_client(credentials, type="compute", ignore_provider=false)
           tokens = credentials.user.split("+")
