@@ -115,6 +115,13 @@ module Deltacloud::Collections
         end
       end
 
+      operation :metadata, :http_method => :delete, :with_capability => :delete_instance_metadata do
+        description "Remove metadata."
+        control do
+          driver.delete_instance_metadata(credentials, params)
+        end
+      end
+
       operation :destroy, :with_capability => :destroy_instance do
         control { instance_action(:destroy) }
       end
