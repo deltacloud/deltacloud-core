@@ -111,14 +111,24 @@ module Deltacloud::Collections
       operation :metadata, :http_method => :post, :with_capability => :update_instance_metadata do
         description "Update metadata."
         control do
-          driver.update_instance_metadata(credentials, params)
+          if request.post?
+            driver.update_instance_metadata(credentials, params)
+          end
+          if request.delete?
+            driver.delete_instance_metadata(credentials, params)
+          end
         end
       end
 
       operation :metadata, :http_method => :delete, :with_capability => :delete_instance_metadata do
         description "Remove metadata."
         control do
-          driver.delete_instance_metadata(credentials, params)
+          if request.post?
+            driver.update_instance_metadata(credentials, params)
+          end
+          if request.delete?
+            driver.delete_instance_metadata(credentials, params)
+          end
         end
       end
 

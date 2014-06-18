@@ -536,6 +536,9 @@ private
         end
 
         def update_instance_metadata_key(server, metakey, metavalue)
+          if not metavalue
+            metavalue = ''
+          end
           metavalue = Base64.decode64(metavalue)
           server.metadata.store(metakey, metavalue)
           server.metadata.save
