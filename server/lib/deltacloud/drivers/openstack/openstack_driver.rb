@@ -502,14 +502,37 @@ module Deltacloud
             if opts[:metadata] && opts[:metadata].length > 0
               update_instance_metadata_full(server, opts[:metadata])
             end
-            if opts[:metakey]
-              update_instance_metadata_key(server, opts[:metakey], opts[:metavalue])
+            if opts[:key]
+              update_instance_metadata_key(server, opts[:key], opts[:value])
+            end
+          end
+          []
+        end
+
+        def delete_instance_metadata(credentials, opts={})
+          os = new_client(credentials)
+          server = os.get_server(opts[:id])
+          if server
+            if opts[:key]
+              delete_instance_metadata_key(server, opts[:key])
+            else
+              delete_instance_metadata_full(server)
             end
           end
           []
         end
 
 private
+        def delete_instance_metadata_key(server, metakey)
+          server.metadata.delete([metakey])
+          server.metadata.save
+        end
+
+        def delete_instance_metadata_full(server)
+          server.metadata.clear
+          server.metadata.save
+        end
+
         def update_instance_metadata_key(server, metakey, metavalue)
           metavalue = Base64.decode64(metavalue)
           server.metadata.store(metakey, metavalue)
@@ -518,7 +541,6 @@ private
 
         def update_instance_metadata_full(server, meta)
           meta = meta_json_parse(meta)
-          server.metadata.clear
           meta.each_pair { |k, v|
            server.metadata.store(k, v)
           }
