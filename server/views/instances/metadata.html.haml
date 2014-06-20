@@ -1,0 +1,5 @@
+- unless defined?(partial)
+  !!! XML
+%metadata
+  - metadata.each_pair do |k,v|
+    %meta{:key=>k}#{v}

@@ -321,6 +321,23 @@ module Deltacloud::Helpers
       not features_arr.empty?
     end
 
+    def metadata_operation(request, credentials, params)
+      if request.get?
+        @output = driver.get_instance_metadata(credentials, params)
+      end
+      if request.post?
+        @output = driver.update_instance_metadata(credentials, params)
+      end
+      if request.delete?
+        @output = driver.delete_instance_metadata(credentials, params)
+      end
+      respond_to do |format|
+        format.xml { haml :"instances/metadata", :locals => { :metadata => @output } }
+        format.html { haml :"instances/metadata", :locals => { :metadata => @output } }
+        format.json { @output.to_json}
+      end
+    end
+
     module SinatraHelper
 
       def new_route_for(route, &block)

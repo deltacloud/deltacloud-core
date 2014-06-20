@@ -508,7 +508,7 @@ module Deltacloud
               update_instance_metadata_key(server, opts[:key], opts[:value])
             end
           end
-          []
+          get_instance_metadata_os(os, opts)
         end
 
         def delete_instance_metadata(credentials, opts={})
@@ -521,10 +521,22 @@ module Deltacloud
               delete_instance_metadata_full(server)
             end
           end
-          []
+          get_instance_metadata_os(os, opts)
+        end
+
+        def get_instance_metadata(credentials, opts={})
+          os = new_client(credentials)
+          get_instance_metadata_os(os, opts)
         end
 
 private
+
+        def get_instance_metadata_os(os, opts={})
+          server = os.get_server(opts[:id])
+          op = (server.class == Hash)? :fetch : :send
+          convert_instance_metadata(server.send(op, :metadata))
+        end
+
         def delete_instance_metadata_key(server, metakey)
           server.metadata.delete([metakey])
           server.metadata.save
