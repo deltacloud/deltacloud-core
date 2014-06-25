@@ -19,6 +19,8 @@ require 'tempfile'
 require 'base64'
 require 'json'
 
+require_relative '../../models/instance_metadata.rb'
+
 module Deltacloud
   module Drivers
     module Openstack
