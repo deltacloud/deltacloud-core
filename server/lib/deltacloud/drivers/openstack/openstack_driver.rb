@@ -43,7 +43,9 @@ module Deltacloud
           running.to( :stopping ) .on( :stop )
           running.to(:finish) .on( :destroy )
           stopping.to( :stopped ) .automatically
-          stopped.to( :finish ) .automatically
+          stopped.to( :finish ) .on( :destroy )
+          stopped.to( :running ) .on ( :start )
+          error.to( :finish) .on( :destroy )
           error.from(:running, :pending, :stopping)
         end
 
@@ -690,6 +692,8 @@ private
               "ERROR"
             when /active/
               "RUNNING"
+            when /suspended/
+              "STOPPED"
             else
               "UNKNOWN"
           end
