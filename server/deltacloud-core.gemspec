@@ -89,7 +89,7 @@ Gem::Specification.new do |s|
     s.add_dependency('puma')
   else
     s.add_dependency('sqlite3')
-    s.add_dependency('thin', '>= 1.2.5')
+    s.add_dependency('thin', '~> 1.2.5')
   end
 
   # dependencies for various cloud providers:
