@@ -36,6 +36,7 @@ module Deltacloud
           pending.to( :running )        .automatically
           running.to( :running )        .on( :reboot )
           running.to( :stopping )       .on( :stop )
+		  stopped.to( :running )        .on( :start ) 
           stopping.to( :stopped )       .automatically
           stopped.to( :finish )         .automatically
           error.from(:running, :pending, :stopping)
@@ -220,6 +221,26 @@ module Deltacloud
           end
           result
         end
+		
+		# Function to start an instance.
+		def start_instance(credentials, instance_id)
+          os = new_client(credentials)
+          safely do
+            server = os.get_server(instance_id)
+            server.start!
+            convert_from_server(server, os.connection.authuser, get_attachments(instance_id, os))
+          end
+        end
+
+		# Function to stop an instance.
+        def stop_instance(credentials, instance_id)
+          os = new_client(credentials)
+          safely do
+            server = os.get_server(instance_id)
+            server.stop!
+            convert_from_server(server, os.connection.authuser, get_attachments(instance_id, os))
+          end
+        end
 
 
         def reboot_instance(credentials, instance_id)
@@ -248,7 +269,8 @@ module Deltacloud
           instance
         end
 
-        alias_method :stop_instance, :destroy_instance
+		
+        # alias_method :stop_instance, :destroy_instance
 
         def buckets(credentials, opts={})
           os = new_client(credentials, "object-store")
@@ -710,6 +732,8 @@ private
               "ERROR"
             when /active/
               "RUNNING"
+			 when /shutoff/
+              "STOPPED"
             else
               "UNKNOWN"
           end
