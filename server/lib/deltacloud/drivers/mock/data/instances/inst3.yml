@@ -1,6 +1,6 @@
 ---
 :id: inst3
-:name: ''
+:name: MockUserInstance
 :state: RUNNING
 :keyname: ''
 :image_id: img3
@@ -21,6 +21,6 @@
 :actions:
 - :reboot
 - :stop
-:user_data: 
+:user_data:
 :network_interfaces:
 - nicinst3

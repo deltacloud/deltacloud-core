@@ -102,8 +102,8 @@ describe CIMI::Collections::Machines do
       get root_url("/machines?$filter=name='MockUserInstance'")
       status.must_equal 200
       (xml/'Collection/Machine').wont_be_empty
-      (xml/'Collection/Machine').size.must_equal 1
-      xml.at('Collection/count').text.must_equal '1'
+      (xml/'Collection/Machine').size.must_equal 2
+      xml.at('Collection/count').text.must_equal '2'
       xml.at('Collection/Machine/name').text.must_equal 'MockUserInstance'
     end
 
