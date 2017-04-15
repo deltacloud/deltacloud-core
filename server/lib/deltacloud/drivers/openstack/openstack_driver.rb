@@ -515,7 +515,7 @@ module Deltacloud
           os = new_client(credentials, "network")
           safely do
             net = os.create_network(opts[:name] || "net_#{Time.now.to_i}")
-            convert_network(net)
+            convert_network(net, [])
           end
         end
 
