@@ -98,7 +98,7 @@ Gem::Specification.new do |s|
   s.add_dependency('rbovirt', '>=0.0.19')
 
   # Amazon EC2 S3
-  s.add_dependency('aws', '>=2.7.0')
+  s.add_dependency('aws', '>=2.9.1')
   # Microsoft Azure
   s.add_dependency('waz-storage', '>=1.1.0')
 
